@@ -198,6 +198,49 @@ class Fun(commands.Cog):
         embed.add_field(name="Answer", value=f"*{answer}*", inline=False)
         await ctx.send(embed=embed)
 
+
+    # ------------------------------------------------------------------
+    # Fight
+    # ------------------------------------------------------------------
+
+    @commands.hybrid_command(name='fight', description="Make two users fight to the death")
+    @app_commands.describe(fighter1="First combatant", fighter2="Second combatant")
+    async def fight(self, ctx: commands.Context, fighter1: discord.Member, fighter2: discord.Member):
+        if fighter1.id == fighter2.id:
+            await ctx.send("They can't fight themselves... or can they? Pick two different people.", ephemeral=True)
+            return
+
+        await ctx.defer()  # gives us time to call the API
+
+        from anthropic import AsyncAnthropic
+        import os
+        client = AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+
+        prompt = (
+            f"Two people are about to fight: {fighter1.display_name} vs {fighter2.display_name}.\n"
+            f"Write a single short, funny, and violent 1-2 sentence fight scenario with a clear winner. "
+            f"Be creative, absurd, and brutal. Name both people. Do not use asterisks or markdown."
+        )
+
+        try:
+            response = await client.messages.create(
+                model='claude-sonnet-4-6',
+                max_tokens=150,
+                messages=[{'role': 'user', 'content': prompt}]
+            )
+            result = response.content[0].text.strip()
+        except Exception as e:
+            print(f'Fight API call failed: {e}')
+            loser = random.choice([fighter1, fighter2])
+            result = f"{fighter1.display_name} and {fighter2.display_name} stare at each other. Nobody moves. It\'s deeply uncomfortable. {loser.display_name} collapses."
+
+        embed = discord.Embed(
+            title=f"⚔️ {fighter1.display_name} vs {fighter2.display_name}",
+            description=result,
+            color=discord.Color.red()
+        )
+        await ctx.send(embed=embed)
+
     # ------------------------------------------------------------------
     # Birthday
     # ------------------------------------------------------------------

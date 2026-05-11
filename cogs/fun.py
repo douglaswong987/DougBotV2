@@ -1,7 +1,11 @@
 import random
+import asyncio
+from datetime import datetime
+import pytz
 import discord
 from discord.ext import commands
 from discord import app_commands
+from discord.ext import tasks
 
 INSULTS = [
     "you are so fucking STUPID",
@@ -37,6 +41,13 @@ BALL_CHOICES = [
     "outlook not so good", "very doubtful",
 ]
 
+PERIOD_LABELS = {
+    'today': 'today',
+    'week': 'this week',
+    'month': 'this month',
+    'alltime': 'all time',
+}
+
 
 class Fun(commands.Cog):
     def __init__(self, bot):
@@ -45,6 +56,40 @@ class Fun(commands.Cog):
     @property
     def db(self):
         return self.bot.db
+
+    async def cog_load(self):
+        self.midnight_reset.start()
+
+    def cog_unload(self):
+        self.midnight_reset.cancel()
+
+    @tasks.loop(hours=24)
+    async def midnight_reset(self):
+        async with self.bot.db.conn.execute(
+            "SELECT guild_id, value FROM guild_config WHERE key='log_channel'"
+        ) as cur:
+            rows = await cur.fetchall()
+        for row in rows:
+            channel = self.bot.get_channel(int(row['value']))
+            if channel:
+                try:
+                    await channel.send(
+                        "🍆 **A new day has dawned.** The cocks have been reset. "
+                        "Use `/cock` to claim your length for today."
+                    )
+                except discord.Forbidden:
+                    pass
+
+    @midnight_reset.before_loop
+    async def before_midnight_reset(self):
+        """Sleep until the next midnight PST before starting the 24h loop."""
+        await self.bot.wait_until_ready()
+        tz = pytz.timezone("US/Pacific")
+        now = datetime.now(tz)
+        from datetime import timedelta
+        tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        delay = (tomorrow - now).total_seconds()
+        await asyncio.sleep(delay)
 
     # ------------------------------------------------------------------
     # Cock
@@ -70,8 +115,7 @@ class Fun(commands.Cog):
 
     @commands.hybrid_command(name='cockcharts', description="Daily cock length leaderboard")
     async def cockcharts(self, ctx: commands.Context):
-        from datetime import date
-        today = date.today().isoformat()
+        today = datetime.now(pytz.timezone("US/Pacific")).strftime("%Y-%m-%d")
         rows = await self.db.get_cock_leaderboard(ctx.guild.id)
 
         embed = discord.Embed(
@@ -95,6 +139,60 @@ class Fun(commands.Cog):
                 )
 
         await ctx.send(embed=embed)
+
+    @commands.hybrid_command(name='meatking', description="Who has the biggest cock? Filter by period.")
+    @app_commands.describe(period="Time period to check")
+    @app_commands.choices(period=[
+        app_commands.Choice(name='Today', value='today'),
+        app_commands.Choice(name='This Week', value='week'),
+        app_commands.Choice(name='This Month', value='month'),
+        app_commands.Choice(name='All Time', value='alltime'),
+    ])
+    async def meatking(self, ctx: commands.Context, period: str = 'today'):
+        rows = await self.db.get_meatking(ctx.guild.id, period)
+        label = PERIOD_LABELS.get(period, period)
+        if not rows:
+            await ctx.send(f"Nobody has rolled {label}. Use `/cock` to get started!")
+            return
+        length = rows[0]['length']
+        if len(rows) == 1:
+            member = ctx.guild.get_member(int(rows[0]['user_id']))
+            name = member.mention if member else f"<@{rows[0]['user_id']}>"
+            await ctx.send(f"👑 **MEAT KING** ({label}): {name} with **{length} inches** 🍆")
+        else:
+            names = ', '.join(
+                ctx.guild.get_member(int(r['user_id'])).mention
+                if ctx.guild.get_member(int(r['user_id'])) else f"<@{r['user_id']}>"
+                for r in rows
+            )
+            await ctx.send(f"👑 **MEAT KINGS** ({label}, tied at **{length} inches**): {names} 🍆")
+
+    @commands.hybrid_command(name='meatchud', description="Who has the smallest cock? Filter by period.")
+    @app_commands.describe(period="Time period to check")
+    @app_commands.choices(period=[
+        app_commands.Choice(name='Today', value='today'),
+        app_commands.Choice(name='This Week', value='week'),
+        app_commands.Choice(name='This Month', value='month'),
+        app_commands.Choice(name='All Time', value='alltime'),
+    ])
+    async def meatchud(self, ctx: commands.Context, period: str = 'today'):
+        rows = await self.db.get_meatchud(ctx.guild.id, period)
+        label = PERIOD_LABELS.get(period, period)
+        if not rows:
+            await ctx.send(f"Nobody has rolled {label}. Use `/cock` to get started!")
+            return
+        length = rows[0]['length']
+        if len(rows) == 1:
+            member = ctx.guild.get_member(int(rows[0]['user_id']))
+            name = member.mention if member else f"<@{rows[0]['user_id']}>"
+            await ctx.send(f"🤏 **MEAT CHUD** ({label}): {name} with **{length} inches** 💀")
+        else:
+            names = ', '.join(
+                ctx.guild.get_member(int(r['user_id'])).mention
+                if ctx.guild.get_member(int(r['user_id'])) else f"<@{r['user_id']}>"
+                for r in rows
+            )
+            await ctx.send(f"🤏 **MEAT CHUDS** ({label}, tied at **{length} inches**): {names} 💀")
 
     # ------------------------------------------------------------------
     # Dice / coin / 8ball
@@ -124,6 +222,60 @@ class Fun(commands.Cog):
         await ctx.send(embed=embed)
 
     # ------------------------------------------------------------------
+    # Fight
+    # ------------------------------------------------------------------
+
+    @commands.hybrid_command(name='fight', description="Make two users fight to the death")
+    @app_commands.describe(fighter1="First combatant", fighter2="Second combatant")
+    async def fight(self, ctx: commands.Context, fighter1: discord.Member, fighter2: discord.Member):
+        if fighter1.id == fighter2.id:
+            await ctx.send("They can't fight themselves... or can they? Pick two different people.", ephemeral=True)
+            return
+
+        await ctx.defer()
+
+        from anthropic import AsyncAnthropic
+        import os
+        client = AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+
+        prompt = (
+            f"Two people are about to fight: {fighter1.display_name} vs {fighter2.display_name}.\n"
+            f"Write a single short, violent 1-2 sentence fight scenario with a clear winner. "
+            f"Be creative, absurd, and brutal. Name both people. Do not use asterisks or markdown.\n"
+            f"Also keep the names formatted/capitalized/uncapitalized as they were presented in this prompt.\n"
+            f"End your response with exactly this format on a new line: WINNER: <name>"
+        )
+
+        try:
+            response = await client.messages.create(
+                model='claude-sonnet-4-6',
+                max_tokens=150,
+                messages=[{'role': 'user', 'content': prompt}]
+            )
+            raw = response.content[0].text.strip()
+            # Split out the winner line
+            if 'WINNER:' in raw:
+                parts = raw.rsplit('WINNER:', 1)
+                scenario = parts[0].strip()
+                winner_name = parts[1].strip()
+            else:
+                scenario = raw
+                winner_name = random.choice([fighter1.display_name, fighter2.display_name])
+        except Exception as e:
+            print(f'Fight API call failed: {e}')
+            loser = random.choice([fighter1, fighter2])
+            scenario = f"{fighter1.display_name} and {fighter2.display_name} stare at each other. Nobody moves. It's deeply uncomfortable. {loser.display_name} collapses."
+            winner_name = fighter2.display_name if loser == fighter1 else fighter1.display_name
+
+        embed = discord.Embed(
+            title=f"⚔️ {fighter1.display_name} vs {fighter2.display_name}",
+            description=scenario,
+            color=discord.Color.red()
+        )
+        embed.add_field(name="🏆 WINNER", value=winner_name, inline=False)
+        await ctx.send(embed=embed)
+
+    # ------------------------------------------------------------------
     # Birthday
     # ------------------------------------------------------------------
 
@@ -132,27 +284,25 @@ class Fun(commands.Cog):
         if message.author.bot:
             return
 
-        # Birthday detection
+        if message.content.startswith("/") or message.content.startswith("!"):
+            return
+
         if 'happy birthday' in message.content.lower() and message.mentions:
             mentions = ', '.join(u.mention for u in message.mentions)
             await message.channel.send(f"HAPPY BIRTHDAY {mentions} 🎂🎉")
             return
 
-        # Random insult logic — configurable targets
         if not message.guild:
             return
 
         db = self.bot.db
 
-        # Special users always get their specific message and nothing else.
-        # Check this before the random roll so they're never in the general pool.
         special_msg = await db.get_insult_special(message.guild.id, message.author.id)
         if special_msg is not None:
             if random.random() <= 0.1:
                 await message.channel.send(special_msg)
             return
 
-        # General insult pool — users/roles configured by admins
         rolled = random.random()
         if rolled > 0.1:
             return
@@ -173,7 +323,7 @@ class Fun(commands.Cog):
             await message.channel.send("i love you")
         else:
             rows = await db.get_insults()
-            pool = [r["message"] for r in rows] if rows else INSULTS
+            pool = [r['message'] for r in rows] if rows else INSULTS
             await message.channel.send(random.choice(pool))
 
 

@@ -1,6 +1,6 @@
 import uuid
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
@@ -94,6 +94,7 @@ class Reminders(commands.Cog):
             )
             return
 
+        from datetime import timedelta
         fire_at = datetime.now(timezone.utc) + timedelta(seconds=seconds)
 
         reminder_id = str(uuid.uuid4())[:8]
@@ -156,18 +157,19 @@ class Reminders(commands.Cog):
 
     @commands.hybrid_command(name='cancelall', description="Cancel all your active reminders")
     async def cancelall(self, ctx: commands.Context):
-        rows = await self.db.get_user_reminders(ctx.author.id)
-        if not rows:
+        count = await self.db.delete_all_user_reminders(ctx.author.id)
+        if count == 0:
             await ctx.send("You have no active reminders to cancel.", ephemeral=True)
             return
 
-        ids_to_cancel = {r['id'] for r in rows}
-        count = await self.db.delete_all_user_reminders(ctx.author.id)
-
-        for rid in ids_to_cancel:
-            task = self._active.pop(rid, None)
-            if task:
-                task.cancel()
+        # Cancel all in-memory tasks for this user
+        rows = await self.db.get_user_reminders(ctx.author.id)
+        fired_ids = {r['id'] for r in rows}
+        for rid in list(self._active.keys()):
+            if rid not in fired_ids:
+                task = self._active.pop(rid, None)
+                if task:
+                    task.cancel()
 
         embed = discord.Embed(
             title="🚫 Reminders cancelled",

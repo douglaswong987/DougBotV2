@@ -1,8 +1,30 @@
 import aiosqlite
-from datetime import date
+from datetime import datetime
+import pytz
+
+TZ = pytz.timezone("US/Pacific")
+
+def today_pst() -> str:
+    return datetime.now(TZ).strftime("%Y-%m-%d")
+
+def _period_filter(period: str) -> str:
+    from datetime import timedelta
+    today = today_pst()
+    now = datetime.now(TZ)
+    if period == 'week':
+        start = (now - timedelta(days=now.weekday())).strftime('%Y-%m-%d')
+        return f"date BETWEEN '{start}' AND '{today}'"
+    elif period == 'month':
+        start = now.strftime('%Y-%m-01')
+        return f"date BETWEEN '{start}' AND '{today}'"
+    elif period == 'alltime':
+        return "date <= '9999-12-31'"
+    else:  # today
+        return f"date='{today}'"
 
 
-DB_PATH = 'dougbot.db'
+import os
+DB_PATH = os.path.join(os.getenv('DATA_DIR', '.'), 'dougbot.db')
 
 
 class Database:
@@ -74,7 +96,7 @@ class Database:
     # -------------------------------------------------------------------------
 
     async def get_cock_length(self, user_id: int, guild_id: int) -> float | None:
-        today = date.today().isoformat()
+        today = today_pst()
         async with self.conn.execute(
             'SELECT length FROM cock_lengths WHERE user_id=? AND guild_id=? AND date=?',
             (str(user_id), str(guild_id), today)
@@ -83,7 +105,7 @@ class Database:
             return row['length'] if row else None
 
     async def set_cock_length(self, user_id: int, guild_id: int, length: float):
-        today = date.today().isoformat()
+        today = today_pst()
         await self.conn.execute(
             '''INSERT INTO cock_lengths (user_id, guild_id, length, date)
                VALUES (?, ?, ?, ?)
@@ -93,12 +115,42 @@ class Database:
         await self.conn.commit()
 
     async def get_cock_leaderboard(self, guild_id: int):
-        today = date.today().isoformat()
+        today = today_pst()
         async with self.conn.execute(
             '''SELECT user_id, length FROM cock_lengths
                WHERE guild_id=? AND date=?
                ORDER BY length DESC''',
             (str(guild_id), today)
+        ) as cur:
+            return await cur.fetchall()
+
+    async def get_meatking(self, guild_id: int, period: str = 'today'):
+        """Returns all users tied for the longest cock in the given period."""
+        date_filter = _period_filter(period)
+        async with self.conn.execute(
+            f'''SELECT user_id, MAX(length) as length FROM cock_lengths
+               WHERE guild_id=? AND {date_filter}
+               GROUP BY user_id
+               HAVING MAX(length)=(
+                   SELECT MAX(length) FROM cock_lengths WHERE guild_id=? AND {date_filter}
+               )
+               ORDER BY rowid DESC''',
+            (str(guild_id), str(guild_id))
+        ) as cur:
+            return await cur.fetchall()
+
+    async def get_meatchud(self, guild_id: int, period: str = 'today'):
+        """Returns all users tied for the shortest cock in the given period."""
+        date_filter = _period_filter(period)
+        async with self.conn.execute(
+            f'''SELECT user_id, MIN(length) as length FROM cock_lengths
+               WHERE guild_id=? AND {date_filter}
+               GROUP BY user_id
+               HAVING MIN(length)=(
+                   SELECT MIN(length) FROM cock_lengths WHERE guild_id=? AND {date_filter}
+               )
+               ORDER BY rowid DESC''',
+            (str(guild_id), str(guild_id))
         ) as cur:
             return await cur.fetchall()
 

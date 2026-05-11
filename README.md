@@ -51,6 +51,9 @@ The SQLite database (`dougbot.db`) is created automatically on first run.
 | `/roll [max] [min]` | Roll a number (default 1–100) |
 | `/cointoss` | Flip a coin |
 | `/8ball <question>` | Ask the magic 8ball |
+| `/meatking` | MeatKing |
+| `/meatchud` | MeatChude |
+| `/fight <user1> <user2>` | FIGHT TO THE DEATH |
 
 ### Reminders
 | Command | Description |

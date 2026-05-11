@@ -1,0 +1,32 @@
+name: Release Notes
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 50  # enough history to get meaningful diffs
+
+      - name: Build and send payload
+        env:
+          WEBHOOK_URL: ${{ secrets.DOUGBOT_WEBHOOK_URL }}
+          WEBHOOK_SECRET: ${{ secrets.DOUGBOT_WEBHOOK_SECRET }}
+        run: |
+          # Collect the last push's commits as JSON (GitHub provides this in the event)
+          # We re-use the GitHub push event payload directly by forwarding it
+          PAYLOAD='${{ toJson(github.event) }}'
+
+          # Compute HMAC-SHA256 signature
+          SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | awk '{print "sha256=" $2}')
+
+          curl -s -X POST "$WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $SIG" \
+            -d "$PAYLOAD"

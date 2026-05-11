@@ -236,7 +236,10 @@ class Config(commands.Cog):
             "`/cockcharts` — Daily leaderboard\n"
             "`/roll [max] [min]` — Roll a number\n"
             "`/cointoss` — Heads or tails\n"
-            "`/8ball <question>` — Magic 8ball"
+            "`/8ball <question>` — Magic 8ball\n"
+            "`/meatking` — The Meat King\n"
+            "`/meatchud` — The Meat Chud\n"
+            "`/fight <user1> <user2>` — FIGHT TO THE DEATH"
         ), inline=False)
 
         embed.add_field(name="⏰ Reminders", value=(
@@ -263,7 +266,12 @@ class Config(commands.Cog):
             "`/insults list` — Show all targets & config"
         ), inline=False)
 
-        embed.set_footer(text="All commands also work with ! prefix (e.g. !cock, !roll)")
+        embed.add_field(name="📣 Release Notes", value=(
+            "`/updates set <#channel>` — Set channel for release notes\n"
+            "`/updates clear` — Disable release notes\n"
+            "`/updates status` — Show current channel"
+        ), inline=False)
+
         await ctx.send(embed=embed)
 
 

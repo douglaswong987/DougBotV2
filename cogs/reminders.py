@@ -94,13 +94,6 @@ class Reminders(commands.Cog):
             )
             return
 
-        now = datetime.now(timezone.utc)
-        fire_at = datetime(
-            now.year, now.month, now.day,
-            now.hour, now.minute, now.second,
-            tzinfo=timezone.utc
-        )
-        fire_at = fire_at.replace(second=fire_at.second + seconds)
         from datetime import timedelta
         fire_at = datetime.now(timezone.utc) + timedelta(seconds=seconds)
 

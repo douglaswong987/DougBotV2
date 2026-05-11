@@ -25,8 +25,11 @@ async def on_ready():
     await bot.load_extension('cogs.config')
     await bot.load_extension('cogs.updates')
     try:
-        synced = await bot.tree.sync()
+        async with asyncio.timeout(30):
+            synced = await bot.tree.sync()
         print(f'Synced {len(synced)} slash command(s)')
+    except asyncio.TimeoutError:
+        print('Slash command sync timed out — continuing anyway')
     except Exception as e:
         print(f'Failed to sync commands: {e}')
     await bot.change_presence(

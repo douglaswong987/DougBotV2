@@ -236,7 +236,9 @@ class Config(commands.Cog):
             "`/cockcharts` — Daily leaderboard\n"
             "`/roll [max] [min]` — Roll a number\n"
             "`/cointoss` — Heads or tails\n"
-            "`/8ball <question>` — Magic 8ball"
+            "`/8ball <question>` — Magic 8ball\n"
+            "`/meatking` — The Meat King\n"
+            "`/meatchud` — The Meat Chud\n"
         ), inline=False)
 
         embed.add_field(name="⏰ Reminders", value=(

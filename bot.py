@@ -40,12 +40,6 @@ async def on_ready():
     print(f'Logged in as {bot.user.name}')
 
 
-@bot.event
-async def on_message(message):
-    if message.author == bot.user:
-        return
-    await bot.process_commands(message)
-
 
 if __name__ == '__main__':
     token = os.getenv('DISCORD_TOKEN')

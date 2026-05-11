@@ -70,8 +70,9 @@ class Fun(commands.Cog):
 
     @commands.hybrid_command(name='cockcharts', description="Daily cock length leaderboard")
     async def cockcharts(self, ctx: commands.Context):
-        from datetime import date
-        today = date.today().isoformat()
+        from datetime import datetime
+        import pytz
+        today = datetime.now(pytz.timezone("US/Pacific")).strftime("%Y-%m-%d")
         rows = await self.db.get_cock_leaderboard(ctx.guild.id)
 
         embed = discord.Embed(

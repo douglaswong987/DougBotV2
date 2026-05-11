@@ -1,5 +1,11 @@
 import aiosqlite
-from datetime import date
+from datetime import datetime
+import pytz
+
+TZ = pytz.timezone("US/Pacific")
+
+def today_pst() -> str:
+    return datetime.now(TZ).strftime("%Y-%m-%d")
 
 
 DB_PATH = 'dougbot.db'
@@ -74,7 +80,7 @@ class Database:
     # -------------------------------------------------------------------------
 
     async def get_cock_length(self, user_id: int, guild_id: int) -> float | None:
-        today = date.today().isoformat()
+        today = today_pst()
         async with self.conn.execute(
             'SELECT length FROM cock_lengths WHERE user_id=? AND guild_id=? AND date=?',
             (str(user_id), str(guild_id), today)
@@ -83,7 +89,7 @@ class Database:
             return row['length'] if row else None
 
     async def set_cock_length(self, user_id: int, guild_id: int, length: float):
-        today = date.today().isoformat()
+        today = today_pst()
         await self.conn.execute(
             '''INSERT INTO cock_lengths (user_id, guild_id, length, date)
                VALUES (?, ?, ?, ?)
@@ -93,7 +99,7 @@ class Database:
         await self.conn.commit()
 
     async def get_cock_leaderboard(self, guild_id: int):
-        today = date.today().isoformat()
+        today = today_pst()
         async with self.conn.execute(
             '''SELECT user_id, length FROM cock_lengths
                WHERE guild_id=? AND date=?

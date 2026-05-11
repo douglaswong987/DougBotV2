@@ -109,29 +109,33 @@ class Database:
         ) as cur:
             return await cur.fetchall()
 
-    async def get_meatking(self, guild_id: int):
-        """Returns all users tied for the longest cock today."""
-        today = today_pst()
+    async def get_meatking(self, guild_id: int, period: str = 'today'):
+        """Returns all users tied for the longest cock in the given period."""
+        date_filter = _period_filter(period)
         async with self.conn.execute(
-            '''SELECT user_id, length FROM cock_lengths
-               WHERE guild_id=? AND date=? AND length=(
-                   SELECT MAX(length) FROM cock_lengths WHERE guild_id=? AND date=?
+            f'''SELECT user_id, MAX(length) as length FROM cock_lengths
+               WHERE guild_id=? AND {date_filter}
+               GROUP BY user_id
+               HAVING MAX(length)=(
+                   SELECT MAX(length) FROM cock_lengths WHERE guild_id=? AND {date_filter}
                )
                ORDER BY rowid DESC''',
-            (str(guild_id), today, str(guild_id), today)
+            (str(guild_id), str(guild_id))
         ) as cur:
             return await cur.fetchall()
 
-    async def get_meatchud(self, guild_id: int):
-        """Returns all users tied for the shortest cock today."""
-        today = today_pst()
+    async def get_meatchud(self, guild_id: int, period: str = 'today'):
+        """Returns all users tied for the shortest cock in the given period."""
+        date_filter = _period_filter(period)
         async with self.conn.execute(
-            '''SELECT user_id, length FROM cock_lengths
-               WHERE guild_id=? AND date=? AND length=(
-                   SELECT MIN(length) FROM cock_lengths WHERE guild_id=? AND date=?
+            f'''SELECT user_id, MIN(length) as length FROM cock_lengths
+               WHERE guild_id=? AND {date_filter}
+               GROUP BY user_id
+               HAVING MIN(length)=(
+                   SELECT MIN(length) FROM cock_lengths WHERE guild_id=? AND {date_filter}
                )
                ORDER BY rowid DESC''',
-            (str(guild_id), today, str(guild_id), today)
+            (str(guild_id), str(guild_id))
         ) as cur:
             return await cur.fetchall()
 

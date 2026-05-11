@@ -35,7 +35,7 @@ async def on_ready():
     except Exception as e:
         print(f'Failed to sync commands: {e}')
     await bot.change_presence(
-        activity=discord.Activity(type=discord.ActivityType.playing, name='with his meat')
+        activity=discord.Activity(type=discord.ActivityType.playing, name='i will find you')
     )
     print(f'Logged in as {bot.user.name}')
 

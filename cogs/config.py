@@ -239,6 +239,7 @@ class Config(commands.Cog):
             "`/8ball <question>` — Magic 8ball\n"
             "`/meatking` — The Meat King\n"
             "`/meatchud` — The Meat Chud\n"
+            "`/fight <user1> <user2>` — FIGHT TO THE DEATH"
         ), inline=False)
 
         embed.add_field(name="⏰ Reminders", value=(

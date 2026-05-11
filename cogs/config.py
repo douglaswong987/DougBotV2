@@ -263,6 +263,12 @@ class Config(commands.Cog):
             "`/insults list` — Show all targets & config"
         ), inline=False)
 
+        embed.add_field(name="📣 Release Notes", value=(
+            "`/updates set <#channel>` — Set channel for release notes\n"
+            "`/updates clear` — Disable release notes\n"
+            "`/updates status` — Show current channel"
+        ), inline=False)
+
         embed.set_footer(text="All commands also work with ! prefix (e.g. !cock, !roll)")
         await ctx.send(embed=embed)
 

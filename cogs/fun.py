@@ -133,6 +133,10 @@ class Fun(commands.Cog):
         if message.author.bot:
             return
 
+        # Ignore anything that looks like a command
+        if message.content.startswith("/") or message.content.startswith("!"):
+            return
+
         # Birthday detection
         if 'happy birthday' in message.content.lower() and message.mentions:
             mentions = ', '.join(u.mention for u in message.mentions)

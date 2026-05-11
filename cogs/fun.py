@@ -41,6 +41,13 @@ BALL_CHOICES = [
     "outlook not so good", "very doubtful",
 ]
 
+PERIOD_LABELS = {
+    'today': 'today',
+    'week': 'this week',
+    'month': 'this month',
+    'alltime': 'all time',
+}
+
 
 class Fun(commands.Cog):
     def __init__(self, bot):
@@ -133,43 +140,59 @@ class Fun(commands.Cog):
 
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(name='meatking', description="Who has the biggest cock today?")
-    async def meatking(self, ctx: commands.Context):
-        rows = await self.db.get_meatking(ctx.guild.id)
+    @commands.hybrid_command(name='meatking', description="Who has the biggest cock? Filter by period.")
+    @app_commands.describe(period="Time period to check")
+    @app_commands.choices(period=[
+        app_commands.Choice(name='Today', value='today'),
+        app_commands.Choice(name='This Week', value='week'),
+        app_commands.Choice(name='This Month', value='month'),
+        app_commands.Choice(name='All Time', value='alltime'),
+    ])
+    async def meatking(self, ctx: commands.Context, period: str = 'today'):
+        rows = await self.db.get_meatking(ctx.guild.id, period)
+        label = PERIOD_LABELS.get(period, period)
         if not rows:
-            await ctx.send("Nobody has rolled yet today. Use `/cock` to get started!")
+            await ctx.send(f"Nobody has rolled {label}. Use `/cock` to get started!")
             return
         length = rows[0]['length']
         if len(rows) == 1:
             member = ctx.guild.get_member(int(rows[0]['user_id']))
             name = member.mention if member else f"<@{rows[0]['user_id']}>"
-            await ctx.send(f"👑 **MEAT KING**: {name} with **{length} inches** 🍆")
+            await ctx.send(f"👑 **MEAT KING** ({label}): {name} with **{length} inches** 🍆")
         else:
             names = ', '.join(
                 ctx.guild.get_member(int(r['user_id'])).mention
                 if ctx.guild.get_member(int(r['user_id'])) else f"<@{r['user_id']}>"
                 for r in rows
             )
-            await ctx.send(f"👑 **MEAT KINGS** (tied at **{length} inches**): {names} 🍆")
+            await ctx.send(f"👑 **MEAT KINGS** ({label}, tied at **{length} inches**): {names} 🍆")
 
-    @commands.hybrid_command(name='meatchud', description="Who has the smallest cock today?")
-    async def meatchud(self, ctx: commands.Context):
-        rows = await self.db.get_meatchud(ctx.guild.id)
+    @commands.hybrid_command(name='meatchud', description="Who has the smallest cock? Filter by period.")
+    @app_commands.describe(period="Time period to check")
+    @app_commands.choices(period=[
+        app_commands.Choice(name='Today', value='today'),
+        app_commands.Choice(name='This Week', value='week'),
+        app_commands.Choice(name='This Month', value='month'),
+        app_commands.Choice(name='All Time', value='alltime'),
+    ])
+    async def meatchud(self, ctx: commands.Context, period: str = 'today'):
+        rows = await self.db.get_meatchud(ctx.guild.id, period)
+        label = PERIOD_LABELS.get(period, period)
         if not rows:
-            await ctx.send("Nobody has rolled yet today. Use `/cock` to get started!")
+            await ctx.send(f"Nobody has rolled {label}. Use `/cock` to get started!")
             return
         length = rows[0]['length']
         if len(rows) == 1:
             member = ctx.guild.get_member(int(rows[0]['user_id']))
             name = member.mention if member else f"<@{rows[0]['user_id']}>"
-            await ctx.send(f"🤏 **MEAT CHUD**: {name} with **{length} inches** 💀")
+            await ctx.send(f"🤏 **MEAT CHUD** ({label}): {name} with **{length} inches** 💀")
         else:
             names = ', '.join(
                 ctx.guild.get_member(int(r['user_id'])).mention
                 if ctx.guild.get_member(int(r['user_id'])) else f"<@{r['user_id']}>"
                 for r in rows
             )
-            await ctx.send(f"🤏 **MEAT CHUDS** (tied at **{length} inches**): {names} 💀")
+            await ctx.send(f"🤏 **MEAT CHUDS** ({label}, tied at **{length} inches**): {names} 💀")
 
     # ------------------------------------------------------------------
     # Dice / coin / 8ball
@@ -198,7 +221,6 @@ class Fun(commands.Cog):
         embed.add_field(name="Answer", value=f"*{answer}*", inline=False)
         await ctx.send(embed=embed)
 
-
     # ------------------------------------------------------------------
     # Fight
     # ------------------------------------------------------------------
@@ -210,7 +232,7 @@ class Fun(commands.Cog):
             await ctx.send("They can't fight themselves... or can they? Pick two different people.", ephemeral=True)
             return
 
-        await ctx.defer()  # gives us time to call the API
+        await ctx.defer()
 
         from anthropic import AsyncAnthropic
         import os
@@ -218,8 +240,10 @@ class Fun(commands.Cog):
 
         prompt = (
             f"Two people are about to fight: {fighter1.display_name} vs {fighter2.display_name}.\n"
-            f"Write a single short, funny, and violent 1-2 sentence fight scenario with a clear winner. "
-            f"Be creative, absurd, and brutal. Name both people. Do not use asterisks or markdown."
+            f"Write a single short, violent 1-2 sentence fight scenario with a clear winner. "
+            f"Be creative, absurd, and brutal. Name both people. Do not use asterisks or markdown.\n"
+            f"Also keep the names formatted/capitalized/uncapitalized as they were presented in this prompt.\n"
+            f"End your response with exactly this format on a new line: WINNER: <name>"
         )
 
         try:
@@ -228,17 +252,27 @@ class Fun(commands.Cog):
                 max_tokens=150,
                 messages=[{'role': 'user', 'content': prompt}]
             )
-            result = response.content[0].text.strip()
+            raw = response.content[0].text.strip()
+            # Split out the winner line
+            if 'WINNER:' in raw:
+                parts = raw.rsplit('WINNER:', 1)
+                scenario = parts[0].strip()
+                winner_name = parts[1].strip()
+            else:
+                scenario = raw
+                winner_name = random.choice([fighter1.display_name, fighter2.display_name])
         except Exception as e:
             print(f'Fight API call failed: {e}')
             loser = random.choice([fighter1, fighter2])
-            result = f"{fighter1.display_name} and {fighter2.display_name} stare at each other. Nobody moves. It\'s deeply uncomfortable. {loser.display_name} collapses."
+            scenario = f"{fighter1.display_name} and {fighter2.display_name} stare at each other. Nobody moves. It's deeply uncomfortable. {loser.display_name} collapses."
+            winner_name = fighter2.display_name if loser == fighter1 else fighter1.display_name
 
         embed = discord.Embed(
             title=f"⚔️ {fighter1.display_name} vs {fighter2.display_name}",
-            description=result,
+            description=scenario,
             color=discord.Color.red()
         )
+        embed.add_field(name="🏆 WINNER", value=winner_name, inline=False)
         await ctx.send(embed=embed)
 
     # ------------------------------------------------------------------
@@ -250,30 +284,25 @@ class Fun(commands.Cog):
         if message.author.bot:
             return
 
-        # Ignore anything that looks like a command
         if message.content.startswith("/") or message.content.startswith("!"):
             return
 
-        # Birthday detection
         if 'happy birthday' in message.content.lower() and message.mentions:
             mentions = ', '.join(u.mention for u in message.mentions)
             await message.channel.send(f"HAPPY BIRTHDAY {mentions} 🎂🎉")
             return
 
-        # Random insult logic — configurable targets
         if not message.guild:
             return
 
         db = self.bot.db
 
-        # Special users always get their specific message and nothing else.
         special_msg = await db.get_insult_special(message.guild.id, message.author.id)
         if special_msg is not None:
             if random.random() <= 0.1:
                 await message.channel.send(special_msg)
             return
 
-        # General insult pool — users/roles configured by admins
         rolled = random.random()
         if rolled > 0.1:
             return

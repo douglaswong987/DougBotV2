@@ -109,6 +109,32 @@ class Database:
         ) as cur:
             return await cur.fetchall()
 
+    async def get_meatking(self, guild_id: int):
+        """Returns all users tied for the longest cock today."""
+        today = today_pst()
+        async with self.conn.execute(
+            '''SELECT user_id, length FROM cock_lengths
+               WHERE guild_id=? AND date=? AND length=(
+                   SELECT MAX(length) FROM cock_lengths WHERE guild_id=? AND date=?
+               )
+               ORDER BY rowid DESC''',
+            (str(guild_id), today, str(guild_id), today)
+        ) as cur:
+            return await cur.fetchall()
+
+    async def get_meatchud(self, guild_id: int):
+        """Returns all users tied for the shortest cock today."""
+        today = today_pst()
+        async with self.conn.execute(
+            '''SELECT user_id, length FROM cock_lengths
+               WHERE guild_id=? AND date=? AND length=(
+                   SELECT MIN(length) FROM cock_lengths WHERE guild_id=? AND date=?
+               )
+               ORDER BY rowid DESC''',
+            (str(guild_id), today, str(guild_id), today)
+        ) as cur:
+            return await cur.fetchall()
+
     # -------------------------------------------------------------------------
     # Reminders
     # -------------------------------------------------------------------------

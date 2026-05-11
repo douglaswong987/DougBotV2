@@ -1,7 +1,11 @@
 import random
+import asyncio
+from datetime import datetime
+import pytz
 import discord
 from discord.ext import commands
 from discord import app_commands
+from discord.ext import tasks
 
 INSULTS = [
     "you are so fucking STUPID",
@@ -46,6 +50,40 @@ class Fun(commands.Cog):
     def db(self):
         return self.bot.db
 
+    async def cog_load(self):
+        self.midnight_reset.start()
+
+    def cog_unload(self):
+        self.midnight_reset.cancel()
+
+    @tasks.loop(hours=24)
+    async def midnight_reset(self):
+        async with self.bot.db.conn.execute(
+            "SELECT guild_id, value FROM guild_config WHERE key='log_channel'"
+        ) as cur:
+            rows = await cur.fetchall()
+        for row in rows:
+            channel = self.bot.get_channel(int(row['value']))
+            if channel:
+                try:
+                    await channel.send(
+                        "🍆 **A new day has dawned.** The cocks have been reset. "
+                        "Use `/cock` to claim your length for today."
+                    )
+                except discord.Forbidden:
+                    pass
+
+    @midnight_reset.before_loop
+    async def before_midnight_reset(self):
+        """Sleep until the next midnight PST before starting the 24h loop."""
+        await self.bot.wait_until_ready()
+        tz = pytz.timezone("US/Pacific")
+        now = datetime.now(tz)
+        from datetime import timedelta
+        tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        delay = (tomorrow - now).total_seconds()
+        await asyncio.sleep(delay)
+
     # ------------------------------------------------------------------
     # Cock
     # ------------------------------------------------------------------
@@ -70,8 +108,6 @@ class Fun(commands.Cog):
 
     @commands.hybrid_command(name='cockcharts', description="Daily cock length leaderboard")
     async def cockcharts(self, ctx: commands.Context):
-        from datetime import datetime
-        import pytz
         today = datetime.now(pytz.timezone("US/Pacific")).strftime("%Y-%m-%d")
         rows = await self.db.get_cock_leaderboard(ctx.guild.id)
 
@@ -96,6 +132,44 @@ class Fun(commands.Cog):
                 )
 
         await ctx.send(embed=embed)
+
+    @commands.hybrid_command(name='meatking', description="Who has the biggest cock today?")
+    async def meatking(self, ctx: commands.Context):
+        rows = await self.db.get_meatking(ctx.guild.id)
+        if not rows:
+            await ctx.send("Nobody has rolled yet today. Use `/cock` to get started!")
+            return
+        length = rows[0]['length']
+        if len(rows) == 1:
+            member = ctx.guild.get_member(int(rows[0]['user_id']))
+            name = member.mention if member else f"<@{rows[0]['user_id']}>"
+            await ctx.send(f"👑 **MEAT KING**: {name} with **{length} inches** 🍆")
+        else:
+            names = ', '.join(
+                ctx.guild.get_member(int(r['user_id'])).mention
+                if ctx.guild.get_member(int(r['user_id'])) else f"<@{r['user_id']}>"
+                for r in rows
+            )
+            await ctx.send(f"👑 **MEAT KINGS** (tied at **{length} inches**): {names} 🍆")
+
+    @commands.hybrid_command(name='meatchud', description="Who has the smallest cock today?")
+    async def meatchud(self, ctx: commands.Context):
+        rows = await self.db.get_meatchud(ctx.guild.id)
+        if not rows:
+            await ctx.send("Nobody has rolled yet today. Use `/cock` to get started!")
+            return
+        length = rows[0]['length']
+        if len(rows) == 1:
+            member = ctx.guild.get_member(int(rows[0]['user_id']))
+            name = member.mention if member else f"<@{rows[0]['user_id']}>"
+            await ctx.send(f"🤏 **MEAT CHUD**: {name} with **{length} inches** 💀")
+        else:
+            names = ', '.join(
+                ctx.guild.get_member(int(r['user_id'])).mention
+                if ctx.guild.get_member(int(r['user_id'])) else f"<@{r['user_id']}>"
+                for r in rows
+            )
+            await ctx.send(f"🤏 **MEAT CHUDS** (tied at **{length} inches**): {names} 💀")
 
     # ------------------------------------------------------------------
     # Dice / coin / 8ball
@@ -150,7 +224,6 @@ class Fun(commands.Cog):
         db = self.bot.db
 
         # Special users always get their specific message and nothing else.
-        # Check this before the random roll so they're never in the general pool.
         special_msg = await db.get_insult_special(message.guild.id, message.author.id)
         if special_msg is not None:
             if random.random() <= 0.1:
@@ -178,7 +251,7 @@ class Fun(commands.Cog):
             await message.channel.send("i love you")
         else:
             rows = await db.get_insults()
-            pool = [r["message"] for r in rows] if rows else INSULTS
+            pool = [r['message'] for r in rows] if rows else INSULTS
             await message.channel.send(random.choice(pool))
 
 

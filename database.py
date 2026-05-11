@@ -8,7 +8,8 @@ def today_pst() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d")
 
 
-DB_PATH = 'dougbot.db'
+import os
+DB_PATH = os.path.join(os.getenv('DATA_DIR', '.'), 'dougbot.db')
 
 
 class Database:

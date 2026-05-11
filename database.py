@@ -7,6 +7,21 @@ TZ = pytz.timezone("US/Pacific")
 def today_pst() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d")
 
+def _period_filter(period: str) -> str:
+    from datetime import timedelta
+    today = today_pst()
+    now = datetime.now(TZ)
+    if period == 'week':
+        start = (now - timedelta(days=now.weekday())).strftime('%Y-%m-%d')
+        return f"date BETWEEN '{start}' AND '{today}'"
+    elif period == 'month':
+        start = now.strftime('%Y-%m-01')
+        return f"date BETWEEN '{start}' AND '{today}'"
+    elif period == 'alltime':
+        return "date <= '9999-12-31'"
+    else:  # today
+        return f"date='{today}'"
+
 
 import os
 DB_PATH = os.path.join(os.getenv('DATA_DIR', '.'), 'dougbot.db')

@@ -269,7 +269,6 @@ class Config(commands.Cog):
             "`/updates status` — Show current channel"
         ), inline=False)
 
-        embed.set_footer(text="All commands also work with ! prefix (e.g. !cock, !roll)")
         await ctx.send(embed=embed)
 
 

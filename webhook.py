@@ -1,50 +1,66 @@
-import asyncio
 import hashlib
 import hmac
 import json
 import os
-
-from aiohttp import web
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
 def _verify_signature(secret: str, payload: bytes, sig_header: str) -> bool:
-    """Verify GitHub's HMAC-SHA256 webhook signature."""
     if not sig_header or not sig_header.startswith('sha256='):
         return False
     expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
     return hmac.compare_digest(f'sha256={expected}', sig_header)
 
 
-def create_webhook_app(bot) -> web.Application:
+def make_handler(bot):
     secret = os.getenv('WEBHOOK_SECRET', '')
 
-    async def handle_release(request: web.Request) -> web.Response:
-        payload_bytes = await request.read()
+    class WebhookHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass  # suppress default HTTP server noise
 
-        # Verify signature
-        sig = request.headers.get('X-Hub-Signature-256', '')
-        if secret and not _verify_signature(secret, payload_bytes, sig):
-            return web.Response(status=401, text='Invalid signature')
+        def do_POST(self):
+            if self.path != '/webhook/release':
+                self.send_response(404)
+                self.end_headers()
+                return
 
-        try:
-            data = json.loads(payload_bytes)
-        except json.JSONDecodeError:
-            return web.Response(status=400, text='Invalid JSON')
+            length = int(self.headers.get('Content-Length', 0))
+            payload_bytes = self.rfile.read(length)
 
-        # Fire and forget — don't block the HTTP response
-        asyncio.create_task(bot.cogs['Updates'].handle_release(data))
-        return web.Response(status=200, text='OK')
+            sig = self.headers.get('X-Hub-Signature-256', '')
+            if secret and not _verify_signature(secret, payload_bytes, sig):
+                self.send_response(401)
+                self.end_headers()
+                self.wfile.write(b'Invalid signature')
+                return
 
-    app = web.Application()
-    app.router.add_post('/webhook/release', handle_release)
-    return app
+            try:
+                data = json.loads(payload_bytes)
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b'Invalid JSON')
+                return
+
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'OK')
+
+            # Schedule the release handler on the bot's event loop
+            updates_cog = bot.cogs.get('Updates')
+            if updates_cog and bot.loop and not bot.loop.is_closed():
+                bot.loop.call_soon_threadsafe(
+                    bot.loop.create_task,
+                    updates_cog.handle_release(data)
+                )
+
+    return WebhookHandler
 
 
-async def start_webhook(bot):
-    app = create_webhook_app(bot)
-    port = int(os.getenv('WEBHOOK_PORT', '8080'))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
+def run_webhook_server(bot):
+    port = int(os.getenv('WEBHOOK_PORT', os.getenv('PORT', '8080')))
+    handler = make_handler(bot)
+    server = HTTPServer(('0.0.0.0', port), handler)
     print(f'Webhook server listening on port {port}')
+    server.serve_forever()

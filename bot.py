@@ -1,12 +1,17 @@
 import os
 import asyncio
+import threading
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 from database import Database
-from webhook import start_webhook
+from webhook import run_webhook_server
 
 load_dotenv()
+
+print(f"DISCORD_TOKEN set: {bool(os.getenv('DISCORD_TOKEN'))}")
+print(f"ANTHROPIC_API_KEY set: {bool(os.getenv('ANTHROPIC_API_KEY'))}")
+print(f"WEBHOOK_SECRET set: {bool(os.getenv('WEBHOOK_SECRET'))}")
 
 intents = discord.Intents.all()
 intents.members = True
@@ -25,11 +30,8 @@ async def on_ready():
     await bot.load_extension('cogs.config')
     await bot.load_extension('cogs.updates')
     try:
-        async with asyncio.timeout(30):
-            synced = await bot.tree.sync()
+        synced = await bot.tree.sync()
         print(f'Synced {len(synced)} slash command(s)')
-    except asyncio.TimeoutError:
-        print('Slash command sync timed out — continuing anyway')
     except Exception as e:
         print(f'Failed to sync commands: {e}')
     await bot.change_presence(
@@ -45,14 +47,17 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-async def main():
-    async with bot:
-        await start_webhook(bot)
-        token = os.getenv('DISCORD_TOKEN')
-        if not token:
-            raise ValueError('DISCORD_TOKEN not set in .env')
-        await bot.start(token)
-
-
 if __name__ == '__main__':
-    asyncio.run(main())
+    token = os.getenv('DISCORD_TOKEN')
+    if not token:
+        raise ValueError('DISCORD_TOKEN not set in .env')
+
+    # Run webhook server in a background thread — completely isolated from the bot's event loop
+    webhook_thread = threading.Thread(
+        target=run_webhook_server,
+        args=(bot,),
+        daemon=True  # dies automatically when the main process exits
+    )
+    webhook_thread.start()
+
+    bot.run(token)

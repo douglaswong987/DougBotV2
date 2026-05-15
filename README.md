@@ -55,6 +55,15 @@ The SQLite database (`dougbot.db`) is created automatically on first run.
 | `/meatchud` | MeatChude |
 | `/fight <user1> <user2>` | FIGHT TO THE DEATH |
 
+### Music
+| Command | Description |
+|---|---|
+| `/play <link>` | Play music from Youtube, Spotify, Soundcloud |
+| `/skip` | Skips current song |
+| `/stop` | Stops current play session |
+| `/pause` | Pause current song |
+| `/queue` | View current queue |
+
 ### Reminders
 | Command | Description |
 |---|---|

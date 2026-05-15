@@ -29,6 +29,7 @@ async def on_ready():
     await bot.load_extension('cogs.moderation')
     await bot.load_extension('cogs.config')
     await bot.load_extension('cogs.updates')
+    await bot.load_extension('cogs.music')
     try:
         synced = await bot.tree.sync()
         print(f'Synced {len(synced)} slash command(s)')

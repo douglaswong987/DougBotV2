@@ -33,15 +33,14 @@ class Music(commands.Cog):
 
         return player
 
-
     @commands.hybrid_command(name='play', description="Play a song from YouTube, SoundCloud, or Spotify")
     @app_commands.describe(query="Song name or URL")
     async def play(self, ctx: commands.Context, *, query: str):
+        await ctx.defer()
+
         player = await self._get_player(ctx)
         if not player:
             return
-
-        await ctx.defer()
 
         tracks = await wavelink.Playable.search(query)
         if not tracks:
@@ -76,7 +75,7 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name='pause', description="Pause or resume playback")
     async def pause(self, ctx: commands.Context):
-        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
+        player: wavelink.Player = ctx.guild.voice_client
         if not player:
             await ctx.send("Nothing is playing.", ephemeral=True)
             return
@@ -89,7 +88,7 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name='stop', description="Stop playback and clear the queue")
     async def stop(self, ctx: commands.Context):
-        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
+        player: wavelink.Player = ctx.guild.voice_client
         if not player:
             await ctx.send("Nothing is playing.", ephemeral=True)
             return
@@ -100,7 +99,7 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name='queue', description="Show the current queue")
     async def queue(self, ctx: commands.Context):
-        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
+        player: wavelink.Player = ctx.guild.voice_client
         if not player or (not player.playing and player.queue.is_empty):
             await ctx.send("The queue is empty.", ephemeral=True)
             return
@@ -128,7 +127,7 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name='nowplaying', description="Show what's currently playing")
     async def nowplaying(self, ctx: commands.Context):
-        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
+        player: wavelink.Player = ctx.guild.voice_client
         if not player or not player.current:
             await ctx.send("Nothing is playing right now.", ephemeral=True)
             return
@@ -152,7 +151,7 @@ class Music(commands.Cog):
     @commands.hybrid_command(name='volume', description="Set the playback volume (0-100)")
     @app_commands.describe(level="Volume level (0-100)")
     async def volume(self, ctx: commands.Context, level: int):
-        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
+        player: wavelink.Player = ctx.guild.voice_client
         if not player:
             await ctx.send("Nothing is playing.", ephemeral=True)
             return

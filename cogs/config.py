@@ -242,6 +242,14 @@ class Config(commands.Cog):
             "`/fight <user1> <user2>` — FIGHT TO THE DEATH"
         ), inline=False)
 
+        embed.add_field(name="🎉 Fun", value=(
+            "`/play <link>` — Play music from Youtube, Spotify, Soundcloud\n"
+            "`/skip` — Skips current song |\n"
+            "`/stop` — Stops current play session\n"
+            "`/pause` — Pause current song\n"
+            "`/queue` — View current queue"
+        ), inline=False)
+
         embed.add_field(name="⏰ Reminders", value=(
             "`/remindme <event> <duration>` — Set a reminder\n"
             "`/reminderslist` — Your active reminders\n"

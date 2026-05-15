@@ -16,12 +16,11 @@ class Music(commands.Cog):
         await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=100)
 
     async def _get_player(self, ctx: commands.Context) -> wavelink.Player | None:
-        """Get or create a player for the guild, joining the user's voice channel."""
         if not ctx.author.voice:
             await ctx.send("You need to be in a voice channel first.", ephemeral=True)
             return None
 
-        player: wavelink.Player = ctx.guild.voice_client
+        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
 
         if not player:
             try:
@@ -48,21 +47,20 @@ class Music(commands.Cog):
             return
 
         if isinstance(tracks, wavelink.Playlist):
-            added = 0
             for track in tracks.tracks:
                 await player.queue.put_wait(track)
-                added += 1
-            await ctx.send(f"📋 Added **{added}** tracks from **{tracks.name}** to the queue.")
+            await ctx.send(f"📋 Added **{len(tracks.tracks)}** tracks from **{tracks.name}** to the queue.")
+            if not player.playing:
+                await player.play(player.queue.get())
         else:
             track = tracks[0]
-            await player.queue.put_wait(track)
+            if player.playing:
+                await player.queue.put_wait(track)
             if player.playing:
                 await ctx.send(f"➕ Added to queue: **{track.title}** by {track.author}")
             else:
                 await ctx.send(f"▶️ Now playing: **{track.title}** by {track.author}")
-
-        if not player.playing:
-            await player.play(player.queue.get())
+                await player.play(track)
 
     @commands.hybrid_command(name='skip', description="Skip the current song")
     async def skip(self, ctx: commands.Context):

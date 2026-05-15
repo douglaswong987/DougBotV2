@@ -20,7 +20,7 @@ class Music(commands.Cog):
             await ctx.send("You need to be in a voice channel first.", ephemeral=True)
             return None
 
-        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
+        player: wavelink.Player = ctx.guild.voice_client
 
         if not player:
             try:
@@ -56,7 +56,6 @@ class Music(commands.Cog):
             track = tracks[0]
             if player.playing:
                 await player.queue.put_wait(track)
-            if player.playing:
                 await ctx.send(f"➕ Added to queue: **{track.title}** by {track.author}")
             else:
                 await ctx.send(f"▶️ Now playing: **{track.title}** by {track.author}")

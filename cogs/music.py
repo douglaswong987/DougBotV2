@@ -36,7 +36,7 @@ _setup_cookies()
 # Debug: check EJS and node availability
 try:
     import yt_dlp_ejs
-    print(f"yt-dlp-ejs found: {yt_dlp_ejs.__version__}")
+    print(f"yt-dlp-ejs found: {yt_dlp_ejs._version.__version__}")
 except ImportError:
     print("yt-dlp-ejs NOT found")
 try:

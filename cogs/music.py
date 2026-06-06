@@ -59,26 +59,34 @@ def _setup_node():
 
 _setup_node()
 
-# Find ffmpeg
+# Find or install ffmpeg
 def _find_ffmpeg():
-    for path in ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/nix/var/nix/profiles/default/bin/ffmpeg']:
+    # Check common paths first
+    for path in ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/nix/var/nix/profiles/default/bin/ffmpeg', '/tmp/ffmpeg/ffmpeg']:
         if os.path.isfile(path):
             print(f"ffmpeg found at: {path}")
             return path
-    # Try which
     result = subprocess.run(['which', 'ffmpeg'], capture_output=True, text=True)
-    if result.returncode == 0:
-        path = result.stdout.strip()
-        print(f"ffmpeg found at: {path}")
-        return path
-    # Search nix store
-    result = subprocess.run(['find', '/nix', '-name', 'ffmpeg', '-type', 'f', '-maxdepth', '10'], capture_output=True, text=True, timeout=10)
-    for line in result.stdout.strip().splitlines():
-        if '/bin/ffmpeg' in line:
-            print(f"ffmpeg found at: {line}")
-            return line
-    print("ffmpeg NOT found")
-    return 'ffmpeg'
+    if result.returncode == 0 and result.stdout.strip():
+        print(f"ffmpeg found at: {result.stdout.strip()}")
+        return result.stdout.strip()
+    # Download static ffmpeg binary
+    print("ffmpeg not found, downloading static binary...")
+    try:
+        import urllib.request, stat
+        ffmpeg_dir = '/tmp/ffmpeg'
+        os.makedirs(ffmpeg_dir, exist_ok=True)
+        ffmpeg_path = f'{ffmpeg_dir}/ffmpeg'
+        url = 'https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz'
+        tar_path = f'{ffmpeg_dir}/ffmpeg.tar.xz'
+        urllib.request.urlretrieve(url, tar_path)
+        subprocess.run(['tar', '-xf', tar_path, '-C', ffmpeg_dir, '--strip-components=2', '--wildcards', '*/bin/ffmpeg'], check=True)
+        os.chmod(ffmpeg_path, os.stat(ffmpeg_path).st_mode | stat.S_IEXEC)
+        print(f"ffmpeg downloaded to: {ffmpeg_path}")
+        return ffmpeg_path
+    except Exception as e:
+        print(f"ffmpeg download failed: {e}")
+        return 'ffmpeg'
 
 _FFMPEG_PATH = _find_ffmpeg()
 

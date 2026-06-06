@@ -33,6 +33,8 @@ def _setup_cookies():
 
 _setup_cookies()
 
+_NODE_PATH = None
+
 # Setup node via nodeenv if not available
 def _setup_node():
     try:
@@ -48,8 +50,10 @@ def _setup_node():
         subprocess.run(['nodeenv', node_dir, '--node=20.0.0', '--prebuilt'], check=True, capture_output=True)
         node_bin = f'{node_dir}/bin'
         os.environ['PATH'] = f"{node_bin}:{os.environ.get('PATH', '')}"
-        result = subprocess.run(['node', '--version'], capture_output=True, text=True)
-        print(f"node installed: {result.stdout.strip()}")
+        global _NODE_PATH
+        _NODE_PATH = f'{node_bin}/node'
+        result = subprocess.run([_NODE_PATH, '--version'], capture_output=True, text=True)
+        print(f"node installed: {result.stdout.strip()} at {_NODE_PATH}")
     except Exception as e:
         print(f"nodeenv install failed: {e}")
 
@@ -70,7 +74,6 @@ YTDL_OPTIONS = {
     'source_address': '0.0.0.0',
     'extract_flat': False,
     'extractor_args': {'youtube': {'player_client': ['web_safari']}},
-    'js_runtimes': {'node': {'path': '/nix/var/nix/profiles/default/bin/node'}},
     'remote_components': ['ejs:github'],
 }
 
@@ -111,6 +114,9 @@ async def fetch_track(query: str) -> Track | None:
         opts = dict(YTDL_OPTIONS)
         if _COOKIE_FILE:
             opts['cookiefile'] = _COOKIE_FILE
+        if _NODE_PATH:
+            opts['js_runtimes'] = {'node': {'path': _NODE_PATH}}
+            print(f"Using node at: {_NODE_PATH}")
         with yt_dlp.YoutubeDL(opts) as ydl:
             try:
                 info = ydl.extract_info(query, download=False)

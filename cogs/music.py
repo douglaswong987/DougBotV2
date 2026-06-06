@@ -35,7 +35,7 @@ YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'extractor_args': {'youtube': {'player_client': ['web_safari']}},
     'js_runtimes': {'node': {}},
-    'remote_components': 'ejs:github',
+    'remote_components': ['ejs:github'],
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,

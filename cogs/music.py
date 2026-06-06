@@ -32,7 +32,8 @@ def _setup_cookies():
 _setup_cookies()
 
 YTDL_OPTIONS = {
-    'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
+    'format': 'bestaudio/best',
+    'format_sort': ['abr', 'asr'],
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,
@@ -71,9 +72,11 @@ def format_duration(seconds: int) -> str:
 async def fetch_track(query: str) -> Track | None:
     # Strip playlist/radio params from YouTube URLs so yt-dlp loads the single video
     import re
-    yt_clean = re.match(r'(https?://(?:www\.)?youtube\.com/watch\?v=[a-zA-Z0-9_-]+)', query)
+    yt_clean = re.match(r'https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]+)', query)
     if yt_clean:
-        query = yt_clean.group(1)
+        query = f'https://www.youtube.com/watch?v={yt_clean.group(1)}'
+    elif re.match(r'https?://', query) and 'youtube' not in query and 'youtu.be' not in query:
+        pass  # non-youtube URL, leave as-is
 
     loop = asyncio.get_event_loop()
 

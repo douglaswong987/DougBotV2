@@ -17,6 +17,7 @@ def _setup_cookies():
     encoded = os.getenv('YOUTUBE_COOKIES_B64')
     if not encoded:
         return
+    encoded += "=" * (-len(encoded) % 4)
     data = base64.b64decode(encoded)
     tmp = tempfile.NamedTemporaryFile(mode='wb', suffix='.txt', delete=False)
     tmp.write(data)

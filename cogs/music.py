@@ -1,9 +1,11 @@
 import asyncio
 import base64
 import os
+import subprocess
 import tempfile
 from collections import deque
 from dataclasses import dataclass
+import re
 
 import discord
 import yt_dlp
@@ -31,17 +33,29 @@ def _setup_cookies():
 
 _setup_cookies()
 
+# Debug: check EJS and node availability
+try:
+    import yt_dlp_ejs
+    print(f"yt-dlp-ejs found: {yt_dlp_ejs.__version__}")
+except ImportError:
+    print("yt-dlp-ejs NOT found")
+try:
+    _node = subprocess.run(['node', '--version'], capture_output=True, text=True)
+    print(f"node: {_node.stdout.strip()}")
+except FileNotFoundError:
+    print("node NOT in PATH")
+
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
-    'extractor_args': {'youtube': {'player_client': ['web_safari']}},
-    'js_runtimes': {'node': {}},
-    'remote_components': ['ejs:github'],
     'noplaylist': True,
-    'quiet': True,
-    'no_warnings': True,
+    'quiet': False,
+    'no_warnings': False,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
     'extract_flat': False,
+    'extractor_args': {'youtube': {'player_client': ['web_safari']}},
+    'js_runtimes': {'node': {}},
+    'remote_components': ['ejs:github'],
 }
 
 FFMPEG_OPTIONS = {
@@ -49,7 +63,7 @@ FFMPEG_OPTIONS = {
     'options': '-vn',
 }
 
-IDLE_TIMEOUT = 600  # 10 minutes in seconds
+IDLE_TIMEOUT = 600
 
 
 @dataclass
@@ -71,20 +85,14 @@ def format_duration(seconds: int) -> str:
 
 
 async def fetch_track(query: str) -> Track | None:
-    # Strip playlist/radio params from YouTube URLs so yt-dlp loads the single video
-    import re
     yt_clean = re.match(r'https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]+)', query)
     if yt_clean:
         query = f'https://www.youtube.com/watch?v={yt_clean.group(1)}'
-    elif re.match(r'https?://', query) and 'youtube' not in query and 'youtu.be' not in query:
-        pass  # non-youtube URL, leave as-is
 
     loop = asyncio.get_event_loop()
 
     def _extract():
         opts = dict(YTDL_OPTIONS)
-        opts['quiet'] = False
-        opts['no_warnings'] = False
         if _COOKIE_FILE:
             opts['cookiefile'] = _COOKIE_FILE
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -94,7 +102,7 @@ async def fetch_track(query: str) -> Track | None:
                     info = info['entries'][0]
                 formats = info.get('formats', [])
                 print(f"Available formats: {[f.get('format_id') for f in formats]}")
-                print(f"Selected URL: {info.get('url', 'NONE')[:80]}")
+                print(f"Selected URL starts with: {str(info.get('url', 'NONE'))[:80]}")
                 return info
             except Exception as e:
                 print(f"yt-dlp extraction error: {e}")
@@ -124,9 +132,7 @@ class GuildMusic:
     def reset_idle(self, bot: commands.Bot, guild_id: int):
         if self._idle_task:
             self._idle_task.cancel()
-        self._idle_task = bot.loop.create_task(
-            self._idle_disconnect(bot, guild_id)
-        )
+        self._idle_task = bot.loop.create_task(self._idle_disconnect(bot, guild_id))
 
     def cancel_idle(self):
         if self._idle_task:
@@ -180,16 +186,10 @@ class Music(commands.Cog):
         def after(error):
             if error:
                 print(f'Player error: {error}')
-            self.bot.loop.call_soon_threadsafe(
-                self._play_next, vc, state, guild_id
-            )
+            self.bot.loop.call_soon_threadsafe(self._play_next, vc, state, guild_id)
 
         vc.play(source, after=after)
         state.cancel_idle()
-
-    # ------------------------------------------------------------------
-    # Commands
-    # ------------------------------------------------------------------
 
     @commands.hybrid_command(name='play', description="Play a song from YouTube, SoundCloud, or Spotify")
     @app_commands.describe(query="Song name or URL")
@@ -210,11 +210,7 @@ class Music(commands.Cog):
 
         if vc.is_playing() or vc.is_paused():
             state.queue.append(track)
-            embed = discord.Embed(
-                title="Added to queue",
-                description=f"**{track.title}**",
-                color=discord.Color.blurple()
-            )
+            embed = discord.Embed(title="Added to queue", description=f"**{track.title}**", color=discord.Color.blurple())
             embed.add_field(name="Artist", value=track.uploader, inline=True)
             embed.add_field(name="Duration", value=format_duration(track.duration), inline=True)
             embed.add_field(name="Position", value=f"#{len(state.queue)}", inline=True)
@@ -224,16 +220,11 @@ class Music(commands.Cog):
         else:
             state.queue.append(track)
             self._play_next(vc, state, ctx.guild.id)
-            embed = discord.Embed(
-                title="Now playing",
-                description=f"**{track.title}**",
-                color=discord.Color.brand_green(),
-                url=track.webpage_url
-            )
+            embed = discord.Embed(title="Now playing", description=f"**{track.title}**", color=discord.Color.brand_green(), url=track.webpage_url)
             embed.add_field(name="Artist", value=track.uploader, inline=True)
             embed.add_field(name="Duration", value=format_duration(track.duration), inline=True)
             if track.thumbnail:
-                embed.set_thumbnail(url=track.webpage_url)
+                embed.set_thumbnail(url=track.thumbnail)
             await ctx.send(embed=embed)
 
     @commands.hybrid_command(name='skip', description="Skip the current song")
@@ -294,10 +285,7 @@ class Music(commands.Cog):
 
         if state.queue:
             items = list(state.queue)[:10]
-            lines = '\n'.join(
-                f"`{i + 1}.` **{t.title}** — {t.uploader} `{format_duration(t.duration)}`"
-                for i, t in enumerate(items)
-            )
+            lines = '\n'.join(f"`{i+1}.` **{t.title}** — {t.uploader} `{format_duration(t.duration)}`" for i, t in enumerate(items))
             if len(state.queue) > 10:
                 lines += f"\n*...and {len(state.queue) - 10} more*"
             embed.add_field(name="Up Next", value=lines, inline=False)
@@ -316,12 +304,7 @@ class Music(commands.Cog):
             return
 
         track = state.current
-        embed = discord.Embed(
-            title="Now Playing",
-            description=f"**{track.title}**",
-            color=discord.Color.blurple(),
-            url=track.webpage_url
-        )
+        embed = discord.Embed(title="Now Playing", description=f"**{track.title}**", color=discord.Color.blurple(), url=track.webpage_url)
         embed.add_field(name="Artist", value=track.uploader, inline=True)
         embed.add_field(name="Duration", value=format_duration(track.duration), inline=True)
         if track.thumbnail:

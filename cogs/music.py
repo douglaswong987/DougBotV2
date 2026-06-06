@@ -32,7 +32,7 @@ def _setup_cookies():
 _setup_cookies()
 
 YTDL_OPTIONS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio',
     'format_sort': ['abr', 'asr'],
     'noplaylist': True,
     'quiet': True,
@@ -40,7 +40,6 @@ YTDL_OPTIONS = {
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
     'extract_flat': False,
-    'cookiefile': _COOKIE_FILE,
 }
 
 FFMPEG_OPTIONS = {
@@ -81,7 +80,10 @@ async def fetch_track(query: str) -> Track | None:
     loop = asyncio.get_event_loop()
 
     def _extract():
-        with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+        opts = dict(YTDL_OPTIONS)
+        if _COOKIE_FILE:
+            opts['cookiefile'] = _COOKIE_FILE
+        with yt_dlp.YoutubeDL(opts) as ydl:
             try:
                 info = ydl.extract_info(query, download=False)
                 if 'entries' in info:

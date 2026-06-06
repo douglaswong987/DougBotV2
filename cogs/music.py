@@ -59,6 +59,29 @@ def _setup_node():
 
 _setup_node()
 
+# Find ffmpeg
+def _find_ffmpeg():
+    for path in ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/nix/var/nix/profiles/default/bin/ffmpeg']:
+        if os.path.isfile(path):
+            print(f"ffmpeg found at: {path}")
+            return path
+    # Try which
+    result = subprocess.run(['which', 'ffmpeg'], capture_output=True, text=True)
+    if result.returncode == 0:
+        path = result.stdout.strip()
+        print(f"ffmpeg found at: {path}")
+        return path
+    # Search nix store
+    result = subprocess.run(['find', '/nix', '-name', 'ffmpeg', '-type', 'f', '-maxdepth', '10'], capture_output=True, text=True, timeout=10)
+    for line in result.stdout.strip().splitlines():
+        if '/bin/ffmpeg' in line:
+            print(f"ffmpeg found at: {line}")
+            return line
+    print("ffmpeg NOT found")
+    return 'ffmpeg'
+
+_FFMPEG_PATH = _find_ffmpeg()
+
 try:
     import yt_dlp_ejs
     print(f"yt-dlp-ejs found: {yt_dlp_ejs._version.__version__}")
@@ -201,7 +224,7 @@ class Music(commands.Cog):
         state.current = track
 
         source = discord.PCMVolumeTransformer(
-            discord.FFmpegPCMAudio(track.url, **FFMPEG_OPTIONS),
+            discord.FFmpegPCMAudio(track.url, executable=_FFMPEG_PATH, **FFMPEG_OPTIONS),
             volume=state.volume
         )
 

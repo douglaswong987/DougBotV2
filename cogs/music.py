@@ -32,7 +32,7 @@ def _setup_cookies():
 _setup_cookies()
 
 YTDL_OPTIONS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,

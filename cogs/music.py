@@ -44,6 +44,9 @@ try:
     print(f"node: {_node.stdout.strip()}")
 except FileNotFoundError:
     print("node NOT in PATH")
+# Find node wherever it might be
+_which = subprocess.run(['find', '/nix', '-name', 'node', '-type', 'f'], capture_output=True, text=True, timeout=5)
+print(f"node locations: {_which.stdout.strip()[:200]}")
 
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
@@ -54,7 +57,7 @@ YTDL_OPTIONS = {
     'source_address': '0.0.0.0',
     'extract_flat': False,
     'extractor_args': {'youtube': {'player_client': ['web_safari']}},
-    'js_runtimes': {'node': {}},
+    'js_runtimes': {'node': {'path': '/nix/var/nix/profiles/default/bin/node'}},
     'remote_components': ['ejs:github'],
 }
 

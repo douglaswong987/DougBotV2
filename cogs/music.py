@@ -33,6 +33,8 @@ _setup_cookies()
 
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
+    'extractor_args': {'youtube': {'player_client': ['android']}},
+    'http_headers': {'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip'},
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,

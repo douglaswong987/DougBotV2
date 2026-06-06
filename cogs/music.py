@@ -33,20 +33,33 @@ def _setup_cookies():
 
 _setup_cookies()
 
-# Debug: check EJS and node availability
+# Setup node via nodeenv if not available
+def _setup_node():
+    try:
+        result = subprocess.run(['node', '--version'], capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f"node already available: {result.stdout.strip()}")
+            return
+    except FileNotFoundError:
+        pass
+    print("node not found, installing via nodeenv...")
+    try:
+        node_dir = '/tmp/node_env'
+        subprocess.run(['nodeenv', node_dir, '--node=20.0.0', '--prebuilt'], check=True, capture_output=True)
+        node_bin = f'{node_dir}/bin'
+        os.environ['PATH'] = f"{node_bin}:{os.environ.get('PATH', '')}"
+        result = subprocess.run(['node', '--version'], capture_output=True, text=True)
+        print(f"node installed: {result.stdout.strip()}")
+    except Exception as e:
+        print(f"nodeenv install failed: {e}")
+
+_setup_node()
+
 try:
     import yt_dlp_ejs
     print(f"yt-dlp-ejs found: {yt_dlp_ejs._version.__version__}")
 except ImportError:
     print("yt-dlp-ejs NOT found")
-try:
-    _node = subprocess.run(['node', '--version'], capture_output=True, text=True)
-    print(f"node: {_node.stdout.strip()}")
-except FileNotFoundError:
-    print("node NOT in PATH")
-# Find node wherever it might be
-_which = subprocess.run(['find', '/', '-name', 'node', '-type', 'f', '-maxdepth', '8'], capture_output=True, text=True, timeout=10)
-print(f"node locations: {_which.stdout.strip()[:300]}")
 
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',

@@ -33,7 +33,7 @@ _setup_cookies()
 
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
-    'extractor_args': {'youtube': {'player_client': ['web', 'web_music']}},
+    'extractor_args': {'youtube': {'player_client': ['web_safari']}},
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,

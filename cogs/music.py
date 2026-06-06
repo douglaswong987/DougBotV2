@@ -21,8 +21,11 @@ def _setup_cookies():
     data = base64.b64decode(encoded)
     tmp = tempfile.NamedTemporaryFile(mode='wb', suffix='.txt', delete=False)
     tmp.write(data)
+    tmp.flush()
+    os.fsync(tmp.fileno())
     tmp.close()
     _COOKIE_FILE = tmp.name
+    print(f"Cookie file written to {_COOKIE_FILE} ({len(data)} bytes)")
 
 _setup_cookies()
 

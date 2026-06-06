@@ -44,6 +44,11 @@ def format_duration(seconds: int) -> str:
 
 
 async def fetch_track(query: str) -> Track | None:
+    import re
+    yt_clean = re.match(r'(https?://(?:www\.)?youtube\.com/watch\?v=[a-zA-Z0-9_-]+)', query)
+    if yt_clean:
+        query = yt_clean.group(1)
+
     loop = asyncio.get_event_loop()
 
     def _extract():

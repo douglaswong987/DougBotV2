@@ -14,7 +14,9 @@ _COOKIE_FILE = None
 
 def _setup_cookies():
     global _COOKIE_FILE
-    encoded = os.getenv('YOUTUBE_COOKIES_B64')
+    part1 = os.getenv('YOUTUBE_COOKIES_B64_1', '')
+    part2 = os.getenv('YOUTUBE_COOKIES_B64_2', '')
+    encoded = part1 + part2
     if not encoded:
         return
     encoded += "=" * (-len(encoded) % 4)

@@ -1,4 +1,7 @@
 import asyncio
+import base64
+import os
+import tempfile
 from collections import deque
 from dataclasses import dataclass
 
@@ -6,6 +9,21 @@ import discord
 import yt_dlp
 from discord import app_commands
 from discord.ext import commands
+
+_COOKIE_FILE = None
+
+def _setup_cookies():
+    global _COOKIE_FILE
+    encoded = os.getenv('YOUTUBE_COOKIES_B64')
+    if not encoded:
+        return
+    data = base64.b64decode(encoded)
+    tmp = tempfile.NamedTemporaryFile(mode='wb', suffix='.txt', delete=False)
+    tmp.write(data)
+    tmp.close()
+    _COOKIE_FILE = tmp.name
+
+_setup_cookies()
 
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
@@ -15,6 +33,7 @@ YTDL_OPTIONS = {
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
     'extract_flat': False,
+    'cookiefile': _COOKIE_FILE,
 }
 
 FFMPEG_OPTIONS = {
@@ -44,6 +63,7 @@ def format_duration(seconds: int) -> str:
 
 
 async def fetch_track(query: str) -> Track | None:
+    # Strip playlist/radio params from YouTube URLs so yt-dlp loads the single video
     import re
     yt_clean = re.match(r'(https?://(?:www\.)?youtube\.com/watch\?v=[a-zA-Z0-9_-]+)', query)
     if yt_clean:

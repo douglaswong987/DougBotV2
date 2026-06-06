@@ -82,6 +82,8 @@ async def fetch_track(query: str) -> Track | None:
 
     def _extract():
         opts = dict(YTDL_OPTIONS)
+        opts['quiet'] = False
+        opts['no_warnings'] = False
         if _COOKIE_FILE:
             opts['cookiefile'] = _COOKIE_FILE
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -89,8 +91,12 @@ async def fetch_track(query: str) -> Track | None:
                 info = ydl.extract_info(query, download=False)
                 if 'entries' in info:
                     info = info['entries'][0]
+                formats = info.get('formats', [])
+                print(f"Available formats: {[f.get('format_id') for f in formats]}")
+                print(f"Selected URL: {info.get('url', 'NONE')[:80]}")
                 return info
-            except Exception:
+            except Exception as e:
+                print(f"yt-dlp extraction error: {e}")
                 return None
 
     info = await loop.run_in_executor(None, _extract)

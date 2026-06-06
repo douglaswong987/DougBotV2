@@ -45,8 +45,8 @@ try:
 except FileNotFoundError:
     print("node NOT in PATH")
 # Find node wherever it might be
-_which = subprocess.run(['find', '/nix', '-name', 'node', '-type', 'f'], capture_output=True, text=True, timeout=5)
-print(f"node locations: {_which.stdout.strip()[:200]}")
+_which = subprocess.run(['find', '/', '-name', 'node', '-type', 'f', '-maxdepth', '8'], capture_output=True, text=True, timeout=10)
+print(f"node locations: {_which.stdout.strip()[:300]}")
 
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',

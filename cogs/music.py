@@ -186,6 +186,7 @@ class Track:
     duration: int
     thumbnail: str | None
     uploader: str
+    http_headers: dict = None
 
 
 def format_duration(seconds: int) -> str:
@@ -229,6 +230,7 @@ async def fetch_track(query: str) -> Track | None:
 
     # Try to get a direct audio URL rather than HLS manifest
     url = info.get('url', '')
+    http_headers = info.get('http_headers', {})
     formats = info.get('formats', [])
     # Prefer non-HLS formats (direct audio streams)
     for fmt in formats:
@@ -236,8 +238,14 @@ async def fetch_track(query: str) -> Track | None:
         protocol = fmt.get('protocol', '')
         if ext in ('webm', 'm4a', 'opus') and 'hls' not in protocol and fmt.get('url'):
             url = fmt['url']
+            http_headers = fmt.get('http_headers', http_headers)
             print(f"Using direct format: {fmt.get('format_id')} ext={ext}")
             break
+
+    # Build ffmpeg header string
+    headers_str = ''.join(f'{k}: {v}\r\n' for k, v in http_headers.items())
+    if headers_str:
+        headers_str = f'-headers {repr(headers_str)}'
 
     return Track(
         title=info.get('title', 'Unknown'),
@@ -246,6 +254,7 @@ async def fetch_track(query: str) -> Track | None:
         duration=info.get('duration', 0),
         thumbnail=info.get('thumbnail'),
         uploader=info.get('uploader') or info.get('channel', 'Unknown'),
+        http_headers=http_headers,
     )
 
 
@@ -305,8 +314,15 @@ class Music(commands.Cog):
         track = state.queue.popleft()
         state.current = track
 
+        # Build before_options with auth headers if present
+        before_opts = FFMPEG_OPTIONS['before_options']
+        if track.http_headers:
+            headers_str = ''.join(f'{k}: {v}\r\n' for k, v in track.http_headers.items())
+            before_opts = f'-headers "{headers_str}" {before_opts}'
         source = discord.PCMVolumeTransformer(
-            discord.FFmpegPCMAudio(track.url, executable=_FFMPEG_PATH, **FFMPEG_OPTIONS),
+            discord.FFmpegPCMAudio(track.url, executable=_FFMPEG_PATH,
+                                   before_options=before_opts,
+                                   options=FFMPEG_OPTIONS['options']),
             volume=state.volume
         )
 

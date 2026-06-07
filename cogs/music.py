@@ -353,10 +353,12 @@ async def fetch_playlist_and_enqueue(query: str, state, vc, cog, guild_id: int) 
                 continue
             state.queue.append(track)
             count += 1
-            # Start or resume playback if bot is connected but idle
-            if vc.is_connected() and not vc.is_playing() and not vc.is_paused():
-                if not started:
-                    started = True
+            # Start playback only if truly idle
+            if not started and vc.is_connected() and not vc.is_playing() and not vc.is_paused() and not state._playing:
+                started = True
+                cog._play_next(vc, state, guild_id)
+            elif started and vc.is_connected() and not vc.is_playing() and not vc.is_paused() and not state._playing and not state.queue:
+                # Bot went idle mid-playlist, kick it back
                 cog._play_next(vc, state, guild_id)
         except Exception as e:
             print(f"Playlist track error: {e}")
@@ -475,6 +477,7 @@ class GuildMusic:
         self._idle_task: asyncio.Task | None = None
         self.now_playing_msg: discord.Message | None = None
         self.now_playing_channel: discord.TextChannel | None = None
+        self._playing: bool = False
 
     def reset_idle(self, bot: commands.Bot, guild_id: int):
         if self._idle_task:
@@ -517,11 +520,15 @@ class Music(commands.Cog):
         return vc
 
     def _play_next(self, vc: discord.VoiceClient, state: GuildMusic, guild_id: int):
+        if state._playing:
+            return
         if not state.queue:
             state.current = None
+            state._playing = False
             state.reset_idle(self.bot, guild_id)
             return
 
+        state._playing = True
         track = state.queue.popleft()
         state.current = track
 
@@ -566,6 +573,7 @@ class Music(commands.Cog):
         def after(error):
             if error:
                 print(f'Player error: {error}')
+            state._playing = False
             # Clean up temp file
             if local_file_to_delete:
                 try:

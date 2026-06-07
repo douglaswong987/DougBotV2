@@ -70,22 +70,14 @@ def _find_ffmpeg():
     if result.returncode == 0 and result.stdout.strip():
         print(f"ffmpeg found at: {result.stdout.strip()}")
         return result.stdout.strip()
-    # Download static ffmpeg binary
-    print("ffmpeg not found, downloading static binary...")
+    # Use imageio-ffmpeg static binary
     try:
-        import urllib.request, stat
-        ffmpeg_dir = '/tmp/ffmpeg'
-        os.makedirs(ffmpeg_dir, exist_ok=True)
-        ffmpeg_path = f'{ffmpeg_dir}/ffmpeg'
-        # Download pre-extracted static ffmpeg binary directly
-        url = 'https://github.com/nicholasgasior/ffmpeg-builds/releases/download/latest/ffmpeg-linux-amd64'
-        urllib.request.urlretrieve(url, ffmpeg_path)
-        print(f'Downloaded {os.path.getsize(ffmpeg_path)} bytes')
-        os.chmod(ffmpeg_path, os.stat(ffmpeg_path).st_mode | stat.S_IEXEC)
-        print(f"ffmpeg downloaded to: {ffmpeg_path}")
-        return ffmpeg_path
+        import imageio_ffmpeg
+        path = imageio_ffmpeg.get_ffmpeg_exe()
+        print(f"ffmpeg found via imageio at: {path}")
+        return path
     except Exception as e:
-        print(f"ffmpeg download failed: {e}")
+        print(f"imageio_ffmpeg failed: {e}")
         return 'ffmpeg'
 
 _FFMPEG_PATH = _find_ffmpeg()

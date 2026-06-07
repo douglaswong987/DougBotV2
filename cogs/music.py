@@ -226,6 +226,7 @@ class Track:
     thumbnail: str | None
     uploader: str
     http_headers: dict = None
+    local_file: str = None
 
 
 def format_duration(seconds: int) -> str:
@@ -250,17 +251,32 @@ async def fetch_track(query: str) -> Track | None:
         if _NODE_PATH:
             opts['js_runtimes'] = {'node': {'path': _NODE_PATH}}
             print(f"Using node at: {_NODE_PATH}")
-        with yt_dlp.YoutubeDL(opts) as ydl:
+
+        # Download to temp file so FFmpeg reads locally (avoids Railway network restrictions)
+        import tempfile
+        tmp_file = tempfile.NamedTemporaryFile(suffix='.%(ext)s', delete=False, dir='/tmp')
+        tmp_file.close()
+        tmp_path = tmp_file.name.replace('.%(ext)s', '')
+
+        dl_opts = dict(opts)
+        dl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
+        dl_opts['outtmpl'] = tmp_path + '.%(ext)s'
+        dl_opts['quiet'] = True
+
+        with yt_dlp.YoutubeDL(dl_opts) as ydl:
             try:
-                info = ydl.extract_info(query, download=False)
+                info = ydl.extract_info(query, download=True)
                 if 'entries' in info:
                     info = info['entries'][0]
-                formats = info.get('formats', [])
-                print(f"Available formats: {[f.get('format_id') for f in formats]}")
-                print(f"Selected URL starts with: {str(info.get('url', 'NONE'))[:80]}")
+                # Find the downloaded file
+                import glob
+                files = glob.glob(tmp_path + '.*')
+                if files:
+                    info['_local_file'] = files[0]
+                    print(f"Downloaded to: {files[0]} ({os.path.getsize(files[0])} bytes)")
                 return info
             except Exception as e:
-                print(f"yt-dlp extraction error: {e}")
+                print(f"yt-dlp download error: {e}")
                 return None
 
     info = await loop.run_in_executor(None, _extract)
@@ -290,14 +306,17 @@ async def fetch_track(query: str) -> Track | None:
     if headers_str:
         headers_str = f'-headers {repr(headers_str)}'
 
+    local_file = info.get('_local_file')
+
     return Track(
         title=info.get('title', 'Unknown'),
-        url=url,
+        url=local_file or url,
         webpage_url=info.get('webpage_url', ''),
         duration=info.get('duration', 0),
         thumbnail=info.get('thumbnail'),
         uploader=info.get('uploader') or info.get('channel', 'Unknown'),
-        http_headers=http_headers,
+        http_headers={} if local_file else http_headers,
+        local_file=local_file,
     )
 
 
@@ -357,22 +376,10 @@ class Music(commands.Cog):
         track = state.queue.popleft()
         state.current = track
 
-        # Build before_options with auth headers
-        headers_str = ''
-        if track.http_headers:
-            for k, v in track.http_headers.items():
-                headers_str += f'{k}: {v}\r\n'
-
-        before_opts = f'-headers "{headers_str}" {FFMPEG_OPTIONS["before_options"]}' if headers_str else FFMPEG_OPTIONS['before_options']
-
-        print(f"Playing URL: {track.url[:100]}")
-        print(f"FFmpeg path: {_FFMPEG_PATH}")
-        print(f"Headers: {list(track.http_headers.keys()) if track.http_headers else None}")
-
+        print(f"Playing: {track.title} from {'local file' if track.local_file else 'URL'}")
+        ffmpeg_opts = {'options': '-vn'} if track.local_file else FFMPEG_OPTIONS
         source = discord.PCMVolumeTransformer(
-            discord.FFmpegPCMAudio(track.url, executable=_FFMPEG_PATH,
-                                   before_options=before_opts,
-                                   options=FFMPEG_OPTIONS['options']),
+            discord.FFmpegPCMAudio(track.url, executable=_FFMPEG_PATH, **ffmpeg_opts),
             volume=state.volume
         )
 

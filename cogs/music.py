@@ -471,6 +471,7 @@ async def fetch_track(query: str) -> Track | None:
         dl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
         dl_opts['outtmpl'] = tmp_path + '.%(ext)s'
         dl_opts['quiet'] = True
+        dl_opts['no_warnings'] = True
         dl_opts['ffmpeg_location'] = _FFMPEG_PATH
         dl_opts['ignoreerrors'] = True
         dl_opts['noplaylist'] = True
@@ -738,7 +739,7 @@ class Music(commands.Cog):
 
         for t in tracks:
             # Queue as YouTube search query
-            search_query = f"ytsearch:{t['artist']} {t['title']}"
+            search_query = f"{t['artist']} {t['title']}"
             track = Track(
                 title=f"{t['title']} — {t['artist']}",
                 url=search_query,
@@ -753,11 +754,6 @@ class Music(commands.Cog):
 
         if not was_playing and not state._playing:
             self._play_next(vc, state, guild_id)
-
-        if state.now_playing_channel and not is_single:
-            await state.now_playing_channel.send(
-                f"✅ Loaded **{len(tracks)}** tracks from Spotify.", delete_after=10
-            )
 
     async def _load_playlist(self, query: str, state, vc, guild_id: int):
         count = await fetch_playlist_and_enqueue(query, state, vc, self, guild_id)

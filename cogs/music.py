@@ -108,7 +108,10 @@ def _load_opus():
         subprocess.run(['pip', 'install', 'opuslib', '--quiet'], check=True)
     except Exception:
         pass
-    print("opus could not be loaded - trying PyNaCl approach")
+    # Last resort - search entire filesystem
+    result = subprocess.run(['find', '/', '-name', 'libopus*', '-maxdepth', '8'], 
+                          capture_output=True, text=True, timeout=15)
+    print(f"opus files found: {result.stdout.strip()[:300]}")
 
 _load_opus()
 

@@ -294,11 +294,9 @@ class Music(commands.Cog):
         track = state.queue.popleft()
         state.current = track
 
-        source = discord.FFmpegOpusAudio(
-            track.url,
-            executable=_FFMPEG_PATH,
-            before_options=FFMPEG_OPTIONS['before_options'],
-            codec='copy',
+        source = discord.PCMVolumeTransformer(
+            discord.FFmpegPCMAudio(track.url, executable=_FFMPEG_PATH, **FFMPEG_OPTIONS),
+            volume=state.volume
         )
 
         def after(error):

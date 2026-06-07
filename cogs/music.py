@@ -256,8 +256,29 @@ class NowPlayingView(discord.ui.View):
         if not vc or not vc.is_playing():
             await interaction.response.send_message("Nothing is playing.", ephemeral=True)
             return
+        state = self.cog._state(self.guild_id)
         vc.stop()
         await interaction.response.send_message("⏭️ Skipped.", ephemeral=True)
+        # If queue is empty, _on_finish may not update the embed — do it here as fallback
+        await asyncio.sleep(0.5)
+        if state.now_playing_msg and not vc.is_playing():
+            current = state.current
+            if current:
+                try:
+                    played_embed = discord.Embed(
+                        title="Played",
+                        description=f"[{current.title}]({current.webpage_url})",
+                        color=discord.Color.greyple()
+                    )
+                    played_embed.add_field(name="Artist", value=current.uploader, inline=True)
+                    if current.duration:
+                        played_embed.add_field(name="Duration", value=format_duration(current.duration), inline=True)
+                    if current.thumbnail:
+                        played_embed.set_thumbnail(url=current.thumbnail)
+                    await state.now_playing_msg.edit(embed=played_embed, view=None)
+                    state.now_playing_msg = None
+                except Exception:
+                    pass
 
     def add_related(self, related: list[dict]):
         if not related:

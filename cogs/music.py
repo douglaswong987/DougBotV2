@@ -228,9 +228,21 @@ async def fetch_track(query: str) -> Track | None:
     if not info:
         return None
 
+    # Try to get a direct audio URL rather than HLS manifest
+    url = info.get('url', '')
+    formats = info.get('formats', [])
+    # Prefer non-HLS formats (direct audio streams)
+    for fmt in formats:
+        ext = fmt.get('ext', '')
+        protocol = fmt.get('protocol', '')
+        if ext in ('webm', 'm4a', 'opus') and 'hls' not in protocol and fmt.get('url'):
+            url = fmt['url']
+            print(f"Using direct format: {fmt.get('format_id')} ext={ext}")
+            break
+
     return Track(
         title=info.get('title', 'Unknown'),
-        url=info.get('url', ''),
+        url=url,
         webpage_url=info.get('webpage_url', ''),
         duration=info.get('duration', 0),
         thumbnail=info.get('thumbnail'),

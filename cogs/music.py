@@ -225,13 +225,13 @@ def format_duration(seconds: int) -> str:
     return f"{minutes}:{secs:02d}"
 
 
-class SkipView(discord.ui.View):
+class NowPlayingView(discord.ui.View):
     def __init__(self, cog, guild_id: int):
         super().__init__(timeout=None)
         self.cog = cog
         self.guild_id = guild_id
 
-    @discord.ui.button(label='⏭ Skip', style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label='⏭ Skip', style=discord.ButtonStyle.danger)
     async def skip_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         vc: discord.VoiceClient = interaction.guild.voice_client
         if not vc or not vc.is_playing():
@@ -239,6 +239,79 @@ class SkipView(discord.ui.View):
             return
         vc.stop()
         await interaction.response.send_message("⏭️ Skipped.", ephemeral=True)
+
+    def add_related(self, related: list[dict]):
+        if not related:
+            return
+        options = [
+            discord.SelectOption(
+                label=r['title'][:100],
+                value=r['url'],
+                description=r.get('uploader', '')[:100]
+            )
+            for r in related[:10]
+        ]
+        select = RelatedSelect(self.cog, self.guild_id, options)
+        self.add_item(select)
+
+
+class RelatedSelect(discord.ui.Select):
+    def __init__(self, cog, guild_id: int, options: list[discord.SelectOption]):
+        super().__init__(placeholder='Play a related song...', options=options, row=1)
+        self.cog = cog
+        self.guild_id = guild_id
+
+    async def callback(self, interaction: discord.Interaction):
+        url = self.values[0]
+        await interaction.response.defer(ephemeral=True)
+        track = await fetch_track(url)
+        if not track:
+            await interaction.followup.send("Couldn't load that track.", ephemeral=True)
+            return
+        state = self.cog._state(self.guild_id)
+        vc: discord.VoiceClient = interaction.guild.voice_client
+        if not vc:
+            await interaction.followup.send("Not in a voice channel.", ephemeral=True)
+            return
+        if vc.is_playing() or vc.is_paused():
+            state.queue.append(track)
+            await interaction.followup.send(f"➕ Added to queue: **{track.title}**", ephemeral=True)
+        else:
+            state.queue.append(track)
+            self.cog._play_next(vc, state, self.guild_id)
+            await interaction.followup.send(f"▶️ Now playing: **{track.title}**", ephemeral=True)
+
+
+async def fetch_related(webpage_url: str) -> list[dict]:
+    loop = asyncio.get_event_loop()
+
+    def _extract():
+        opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+            'playlist_items': '1:11',
+        }
+        if _COOKIE_FILE:
+            opts['cookiefile'] = _COOKIE_FILE
+        # Get related via YouTube's watch page sidebar
+        video_id = re.search(r'v=([a-zA-Z0-9_-]+)', webpage_url)
+        if not video_id:
+            return []
+        related_url = f'https://www.youtube.com/watch?v={video_id.group(1)}&list=RD{video_id.group(1)}'
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(related_url, download=False)
+                entries = info.get('entries', [])[1:11]  # skip first (current song)
+                return [
+                    {'title': e.get('title', 'Unknown'), 'url': f"https://www.youtube.com/watch?v={e['id']}", 'uploader': e.get('uploader') or e.get('channel', '')}
+                    for e in entries if e.get('id')
+                ]
+        except Exception as e:
+            print(f"Related fetch error: {e}")
+            return []
+
+    return await loop.run_in_executor(None, _extract)
 
 
 async def fetch_track(query: str) -> Track | None:
@@ -420,9 +493,19 @@ class Music(commands.Cog):
                     embed.add_field(name="Duration", value=format_duration(next_track.duration), inline=True)
                     if next_track.thumbnail:
                         embed.set_thumbnail(url=next_track.thumbnail)
-                    view = SkipView(self, guild_id)
+                    view = NowPlayingView(self, guild_id)
                     msg = await state.now_playing_channel.send(embed=embed, view=view)
                     state.now_playing_msg = msg
+                    # Fetch related in background and update view
+                    async def _add_related(m=msg, t=next_track, v=view):
+                        related = await fetch_related(t.webpage_url)
+                        if related and state.now_playing_msg == m:
+                            v.add_related(related)
+                            try:
+                                await m.edit(view=v)
+                            except Exception:
+                                pass
+                    asyncio.ensure_future(_add_related())
             asyncio.run_coroutine_threadsafe(_on_finish(), self.bot.loop)
             self.bot.loop.call_soon_threadsafe(self._play_next, vc, state, guild_id)
 
@@ -468,9 +551,19 @@ class Music(commands.Cog):
             embed.add_field(name="Duration", value=format_duration(track.duration), inline=True)
             if track.thumbnail:
                 embed.set_thumbnail(url=track.thumbnail)
-            view = SkipView(self, ctx.guild.id)
+            view = NowPlayingView(self, ctx.guild.id)
             msg = await ctx.send(embed=embed, view=view)
             state.now_playing_msg = msg
+            # Fetch related in background
+            async def _add_related(m=msg, t=track, v=view):
+                related = await fetch_related(t.webpage_url)
+                if related and state.now_playing_msg == m:
+                    v.add_related(related)
+                    try:
+                        await m.edit(view=v)
+                    except Exception:
+                        pass
+            asyncio.ensure_future(_add_related())
 
     @commands.hybrid_command(name='skip', description="Skip the current song")
     async def skip(self, ctx: commands.Context):

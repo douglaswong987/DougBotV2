@@ -256,15 +256,15 @@ async def fetch_track(query: str) -> Track | None:
             opts['js_runtimes'] = {'node': {'path': _NODE_PATH}}
 
         # Download to temp file so FFmpeg reads locally (avoids Railway network restrictions)
-        import tempfile
-        tmp_file = tempfile.NamedTemporaryFile(suffix='.%(ext)s', delete=False, dir='/tmp')
-        tmp_file.close()
-        tmp_path = tmp_file.name.replace('.%(ext)s', '')
+        import tempfile, uuid
+        tmp_id = uuid.uuid4().hex
+        tmp_path = f'/tmp/dougbot_{tmp_id}'
 
         dl_opts = dict(opts)
         dl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
         dl_opts['outtmpl'] = tmp_path + '.%(ext)s'
         dl_opts['quiet'] = True
+        dl_opts['ffmpeg_location'] = _FFMPEG_PATH
 
         with yt_dlp.YoutubeDL(dl_opts) as ydl:
             try:

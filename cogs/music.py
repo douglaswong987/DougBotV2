@@ -343,6 +343,7 @@ async def fetch_track(query: str) -> Track | None:
         dl_opts['outtmpl'] = tmp_path + '_%(playlist_index)s.%(ext)s'
         dl_opts['quiet'] = True
         dl_opts['ffmpeg_location'] = _FFMPEG_PATH
+        dl_opts['ignoreerrors'] = True
 
         with yt_dlp.YoutubeDL(dl_opts) as ydl:
             try:

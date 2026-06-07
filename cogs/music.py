@@ -391,6 +391,8 @@ async def fetch_track(query: str) -> Track | None:
         with yt_dlp.YoutubeDL(dl_opts) as ydl:
             try:
                 info = ydl.extract_info(query, download=True)
+                if not info:
+                    return None
                 # If playlist, return all entries
                 if 'entries' in info:
                     import glob

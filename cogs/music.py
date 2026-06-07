@@ -350,6 +350,7 @@ async def fetch_playlist_and_enqueue(query: str, state, vc, cog, guild_id: int) 
         try:
             track = await fetch_track(url)
             if not track or isinstance(track, list):
+                await asyncio.sleep(1)
                 continue
             state.queue.append(track)
             count += 1
@@ -357,11 +358,14 @@ async def fetch_playlist_and_enqueue(query: str, state, vc, cog, guild_id: int) 
             if not started and vc.is_connected() and not vc.is_playing() and not vc.is_paused() and not state._playing:
                 started = True
                 cog._play_next(vc, state, guild_id)
-            elif started and vc.is_connected() and not vc.is_playing() and not vc.is_paused() and not state._playing and not state.queue:
+            elif started and vc.is_connected() and not vc.is_playing() and not vc.is_paused() and not state._playing:
                 # Bot went idle mid-playlist, kick it back
                 cog._play_next(vc, state, guild_id)
+            # Small delay to avoid hammering YouTube with 429s
+            await asyncio.sleep(0.5)
         except Exception as e:
             print(f"Playlist track error: {e}")
+            await asyncio.sleep(1)
             continue
 
     return count
@@ -437,6 +441,10 @@ async def fetch_track(query: str) -> Track | None:
                 local_file=local_file,
             ))
         return tracks if tracks else None
+
+    # Guard against None info (e.g. unavailable video with ignoreerrors)
+    if not isinstance(info, dict):
+        return None
 
     # Try to get a direct audio URL rather than HLS manifest
     url = info.get('url', '')

@@ -97,18 +97,6 @@ def _test_ffmpeg(path):
         print(f"FFmpeg {path} test error: {e}")
         return False
 
-# Test if ffmpeg can actually fetch URLs
-def _test_ffmpeg_url():
-    try:
-        test_cmd = [_FFMPEG_PATH, '-v', 'quiet', '-i', 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3', '-t', '1', '-f', 'null', '-']
-        result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=15)
-        print(f"FFmpeg URL test code: {result.returncode}")
-        if result.stderr:
-            print(f"FFmpeg URL test stderr: {result.stderr[:200]}")
-    except Exception as e:
-        print(f"FFmpeg URL test failed: {e}")
-
-_test_ffmpeg_url()
 
 if not _test_ffmpeg(_FFMPEG_PATH):
     # Try imageio as fallback
@@ -250,7 +238,6 @@ async def fetch_track(query: str) -> Track | None:
             opts['cookiefile'] = _COOKIE_FILE
         if _NODE_PATH:
             opts['js_runtimes'] = {'node': {'path': _NODE_PATH}}
-            print(f"Using node at: {_NODE_PATH}")
 
         # Download to temp file so FFmpeg reads locally (avoids Railway network restrictions)
         import tempfile
@@ -273,7 +260,6 @@ async def fetch_track(query: str) -> Track | None:
                 files = glob.glob(tmp_path + '.*')
                 if files:
                     info['_local_file'] = files[0]
-                    print(f"Downloaded to: {files[0]} ({os.path.getsize(files[0])} bytes)")
                 return info
             except Exception as e:
                 print(f"yt-dlp download error: {e}")
@@ -376,7 +362,6 @@ class Music(commands.Cog):
         track = state.queue.popleft()
         state.current = track
 
-        print(f"Playing: {track.title} from {'local file' if track.local_file else 'URL'}")
         ffmpeg_opts = {'options': '-vn'} if track.local_file else FFMPEG_OPTIONS
         source = discord.PCMVolumeTransformer(
             discord.FFmpegPCMAudio(track.url, executable=_FFMPEG_PATH, **ffmpeg_opts),

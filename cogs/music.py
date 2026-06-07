@@ -314,6 +314,14 @@ class Music(commands.Cog):
         track = state.queue.popleft()
         state.current = track
 
+        # Test FFmpeg directly to get error output
+        import tempfile
+        test_cmd = [_FFMPEG_PATH, '-v', 'error', '-i', track.url, '-t', '1', '-f', 'null', '-']
+        test = subprocess.run(test_cmd, capture_output=True, text=True, timeout=10)
+        print(f"FFmpeg test stdout: {test.stdout[:200]}")
+        print(f"FFmpeg test stderr: {test.stderr[:500]}")
+        print(f"FFmpeg test returncode: {test.returncode}")
+
         # Build before_options with auth headers if present
         before_opts = FFMPEG_OPTIONS['before_options']
         if track.http_headers:

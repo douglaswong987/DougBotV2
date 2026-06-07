@@ -108,19 +108,33 @@ def _load_opus():
         subprocess.run(['pip', 'install', 'opuslib', '--quiet'], check=True)
     except Exception:
         pass
-    # Download Linux opus shared library
+    # Extract libopus from Ubuntu deb package
     try:
-        import urllib.request, stat
-        opus_path = '/tmp/libopus.so.0'
+        import urllib.request
+        deb_path = '/tmp/libopus0.deb'
         urllib.request.urlretrieve(
-            'https://github.com/discordjs/opus/releases/download/0.9.0/linux-x64-111-libopus.so',
-            opus_path
+            'http://archive.ubuntu.com/ubuntu/pool/main/o/opus/libopus0_1.3.1-3_amd64.deb',
+            deb_path
         )
-        discord.opus.load_opus(opus_path)
-        print(f"opus loaded from download: {opus_path}")
-        return
+        # Extract using ar and tar
+        import shutil
+        extract_dir = '/tmp/opus_extract'
+        os.makedirs(extract_dir, exist_ok=True)
+        subprocess.run(['ar', 'x', deb_path], cwd=extract_dir, check=True)
+        # Find and extract data.tar
+        for f in os.listdir(extract_dir):
+            if f.startswith('data.tar'):
+                subprocess.run(['tar', '-xf', f'{extract_dir}/{f}', '-C', extract_dir, '--wildcards', '*/libopus*'], check=True)
+                break
+        # Find the extracted .so
+        result = subprocess.run(['find', extract_dir, '-name', 'libopus*.so*'], capture_output=True, text=True)
+        so_files = result.stdout.strip().splitlines()
+        if so_files:
+            discord.opus.load_opus(so_files[0])
+            print(f"opus loaded from deb: {so_files[0]}")
+            return
     except Exception as e:
-        print(f"opus download failed: {e}")
+        print(f"opus deb extract failed: {e}")
 
 _load_opus()
 

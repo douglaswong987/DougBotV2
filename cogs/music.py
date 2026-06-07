@@ -82,16 +82,35 @@ def _find_ffmpeg():
 
 _FFMPEG_PATH = _find_ffmpeg()
 
-# Load opus
-try:
-    discord.opus.load_opus('libopus.so.0')
-    print("opus loaded: libopus.so.0")
-except Exception:
+# Load opus - try common paths then find it
+import ctypes.util, glob
+def _load_opus():
+    # Try standard names first
+    for name in ['libopus.so.0', 'libopus.so', 'libopus']:
+        try:
+            discord.opus.load_opus(name)
+            print(f"opus loaded: {name}")
+            return
+        except Exception:
+            pass
+    # Search filesystem
+    for pattern in ['/usr/lib/*/libopus*', '/usr/lib/libopus*', '/nix/store/*/lib/libopus*', '/app/.venv/lib*/libopus*']:
+        matches = glob.glob(pattern)
+        if matches:
+            try:
+                discord.opus.load_opus(matches[0])
+                print(f"opus loaded from: {matches[0]}")
+                return
+            except Exception:
+                pass
+    # Try to install via pip
     try:
-        discord.opus.load_opus('libopus')
-        print("opus loaded: libopus")
-    except Exception as e:
-        print(f"opus load failed: {e}")
+        subprocess.run(['pip', 'install', 'opuslib', '--quiet'], check=True)
+    except Exception:
+        pass
+    print("opus could not be loaded - trying PyNaCl approach")
+
+_load_opus()
 
 try:
     import yt_dlp_ejs

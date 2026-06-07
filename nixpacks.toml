@@ -1,2 +1,2 @@
 [phases.setup]
-nixPkgs = ["libopus"]
+aptPkgs = ["libopus0", "libopus-dev"]

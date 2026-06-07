@@ -82,6 +82,32 @@ def _find_ffmpeg():
 
 _FFMPEG_PATH = _find_ffmpeg()
 
+# Test ffmpeg binary
+def _test_ffmpeg(path):
+    try:
+        result = subprocess.run([path, '-version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            version_line = result.stdout.split('\n')[0]
+            print(f"FFmpeg works: {version_line}")
+            return True
+        else:
+            print(f"FFmpeg {path} failed version check: code {result.returncode}")
+            return False
+    except Exception as e:
+        print(f"FFmpeg {path} test error: {e}")
+        return False
+
+if not _test_ffmpeg(_FFMPEG_PATH):
+    # Try imageio as fallback
+    try:
+        import imageio_ffmpeg
+        imageio_path = imageio_ffmpeg.get_ffmpeg_exe()
+        if _test_ffmpeg(imageio_path):
+            _FFMPEG_PATH = imageio_path
+            print(f"Switched to imageio ffmpeg: {_FFMPEG_PATH}")
+    except Exception as e:
+        print(f"imageio fallback failed: {e}")
+
 # Load opus - try common paths then find it
 import ctypes.util, glob
 def _load_opus():

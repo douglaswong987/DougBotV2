@@ -319,6 +319,52 @@ async def fetch_related(webpage_url: str) -> list[dict]:
     return await loop.run_in_executor(None, _extract)
 
 
+async def fetch_playlist_and_enqueue(query: str, state, vc, cog, guild_id: int) -> int:
+    """Fetch playlist entries flat, then download and enqueue one at a time. Returns track count."""
+    loop = asyncio.get_event_loop()
+
+    # Step 1: get flat list of video IDs quickly
+    def _get_entries():
+        opts = {
+            'quiet': True,
+            'extract_flat': True,
+            'ignoreerrors': True,
+        }
+        if _COOKIE_FILE:
+            opts['cookiefile'] = _COOKIE_FILE
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(query, download=False)
+            if not info or 'entries' not in info:
+                return []
+            return [e for e in info['entries'] if e and e.get('id')]
+
+    entries = await loop.run_in_executor(None, _get_entries)
+    if not entries:
+        return 0
+
+    # Step 2: download and enqueue one at a time
+    started = False
+    count = 0
+    for entry in entries:
+        url = f"https://www.youtube.com/watch?v={entry['id']}"
+        try:
+            track = await fetch_track(url)
+            if not track or isinstance(track, list):
+                continue
+            state.queue.append(track)
+            count += 1
+            # Start or resume playback if bot is connected but idle
+            if vc.is_connected() and not vc.is_playing() and not vc.is_paused():
+                if not started:
+                    started = True
+                cog._play_next(vc, state, guild_id)
+        except Exception as e:
+            print(f"Playlist track error: {e}")
+            continue
+
+    return count
+
+
 async def fetch_track(query: str) -> Track | None:
     yt_clean = re.match(r'https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]+)', query)
     if yt_clean:
@@ -515,9 +561,17 @@ class Music(commands.Cog):
 
         finished_track = track
 
+        local_file_to_delete = track.local_file
+
         def after(error):
             if error:
                 print(f'Player error: {error}')
+            # Clean up temp file
+            if local_file_to_delete:
+                try:
+                    os.remove(local_file_to_delete)
+                except Exception:
+                    pass
             async def _on_finish():
                 if state.now_playing_msg:
                     try:
@@ -540,6 +594,13 @@ class Music(commands.Cog):
         vc.play(source, after=after)
         state.cancel_idle()
 
+    async def _load_playlist(self, query: str, state, vc, guild_id: int):
+        count = await fetch_playlist_and_enqueue(query, state, vc, self, guild_id)
+        if count == 0 and state.now_playing_channel:
+            await state.now_playing_channel.send("❌ No tracks could be loaded from that playlist.")
+        elif state.now_playing_channel:
+            await state.now_playing_channel.send(f"✅ Finished loading **{count}** tracks from playlist.", delete_after=10)
+
     @commands.hybrid_command(name='play', description="Play a song from YouTube, SoundCloud, or Spotify")
     @app_commands.describe(query="Song name or URL")
     async def play(self, ctx: commands.Context, *, query: str):
@@ -549,16 +610,23 @@ class Music(commands.Cog):
         if not vc:
             return
 
+        state = self._state(ctx.guild.id)
+        state.now_playing_channel = ctx.channel
+
+        # Detect playlist URLs and handle with streaming downloader
+        is_playlist = ('list=' in query and 'watch?v=' not in query) or ('playlist?list=' in query)
+        if is_playlist or (query.startswith('http') and 'list=' in query and 'watch?v=' not in query):
+            await ctx.send("📋 Loading playlist... playback will start as tracks become ready.", delete_after=5)
+            asyncio.ensure_future(self._load_playlist(query, state, vc, ctx.guild.id))
+            return
+
         result = await fetch_track(query)
 
         if not result:
             await ctx.send("Could not find or load that track. Try a different search.", ephemeral=True)
             return
 
-        state = self._state(ctx.guild.id)
-        state.now_playing_channel = ctx.channel
-
-        # Handle playlist
+        # Handle playlist result from fetch_track (e.g. YouTube mix)
         if isinstance(result, list):
             was_playing = vc.is_playing() or vc.is_paused()
             for t in result:

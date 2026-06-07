@@ -320,10 +320,9 @@ async def fetch_related(webpage_url: str) -> list[dict]:
 
 
 async def fetch_playlist_and_enqueue(query: str, state, vc, cog, guild_id: int) -> int:
-    """Fetch playlist entries flat, then download and enqueue one at a time. Returns track count."""
+    """Fetch playlist metadata only, enqueue immediately. Downloads happen at play time."""
     loop = asyncio.get_event_loop()
 
-    # Step 1: get flat list of video IDs quickly
     def _get_entries():
         opts = {
             'quiet': True,
@@ -342,33 +341,25 @@ async def fetch_playlist_and_enqueue(query: str, state, vc, cog, guild_id: int) 
     if not entries:
         return 0
 
-    # Step 2: download and enqueue one at a time
-    started = False
-    count = 0
-    for entry in entries:
-        url = f"https://www.youtube.com/watch?v={entry['id']}"
-        try:
-            track = await fetch_track(url)
-            if not track or isinstance(track, list):
-                await asyncio.sleep(1)
-                continue
-            state.queue.append(track)
-            count += 1
-            # Start playback only if truly idle
-            if not started and vc.is_connected() and not vc.is_playing() and not vc.is_paused() and not state._playing:
-                started = True
-                cog._play_next(vc, state, guild_id)
-            elif started and vc.is_connected() and not vc.is_playing() and not vc.is_paused() and not state._playing:
-                # Bot went idle mid-playlist, kick it back
-                cog._play_next(vc, state, guild_id)
-            # Small delay to avoid hammering YouTube with 429s
-            await asyncio.sleep(0.5)
-        except Exception as e:
-            print(f"Playlist track error: {e}")
-            await asyncio.sleep(1)
-            continue
+    was_playing = vc.is_playing() or vc.is_paused()
 
-    return count
+    for entry in entries:
+        track = Track(
+            title=entry.get('title', 'Unknown'),
+            url=f"https://www.youtube.com/watch?v={entry['id']}",
+            webpage_url=f"https://www.youtube.com/watch?v={entry['id']}",
+            duration=entry.get('duration', 0),
+            thumbnail=entry.get('thumbnail'),
+            uploader=entry.get('uploader') or entry.get('channel', 'Unknown'),
+            http_headers={},
+            local_file=None,
+        )
+        state.queue.append(track)
+
+    if not was_playing and not state._playing:
+        cog._play_next(vc, state, guild_id)
+
+    return len(entries)
 
 
 async def fetch_track(query: str) -> Track | None:
@@ -540,16 +531,25 @@ class Music(commands.Cog):
         track = state.queue.popleft()
         state.current = track
 
-        ffmpeg_opts = {'options': '-vn'} if track.local_file else FFMPEG_OPTIONS
-        source = discord.PCMVolumeTransformer(
-            discord.FFmpegPCMAudio(track.url, executable=_FFMPEG_PATH, **ffmpeg_opts),
-            volume=state.volume
+        asyncio.run_coroutine_threadsafe(
+            self._download_and_play(vc, state, guild_id, track),
+            self.bot.loop
         )
 
-        # Post Now Playing embed for this track
-        async def _post_now_playing():
-            if not state.now_playing_channel:
+    async def _download_and_play(self, vc: discord.VoiceClient, state: GuildMusic, guild_id: int, track: Track):
+        # Download if not already downloaded
+        if not track.local_file:
+            downloaded = await fetch_track(track.url)
+            if not downloaded or isinstance(downloaded, list):
+                print(f"Skipping unavailable track: {track.title}")
+                state._playing = False
+                self._play_next(vc, state, guild_id)
                 return
+            track = downloaded
+            state.current = track
+
+        # Post Now Playing embed
+        if state.now_playing_channel:
             embed = discord.Embed(
                 title="Now playing",
                 description=f"[{track.title}]({track.webpage_url})",
@@ -572,17 +572,18 @@ class Music(commands.Cog):
                         pass
             asyncio.ensure_future(_add_related())
 
-        asyncio.run_coroutine_threadsafe(_post_now_playing(), self.bot.loop)
-
-        finished_track = track
-
         local_file_to_delete = track.local_file
+        ffmpeg_opts = {'options': '-vn'} if track.local_file else FFMPEG_OPTIONS
+        source = discord.PCMVolumeTransformer(
+            discord.FFmpegPCMAudio(track.url, executable=_FFMPEG_PATH, **ffmpeg_opts),
+            volume=state.volume
+        )
+        finished_track = track
 
         def after(error):
             if error:
                 print(f'Player error: {error}')
             state._playing = False
-            # Clean up temp file
             if local_file_to_delete:
                 try:
                     os.remove(local_file_to_delete)

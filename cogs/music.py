@@ -329,6 +329,7 @@ class GuildMusic:
         self.volume: float = 0.5
         self._idle_task: asyncio.Task | None = None
         self.now_playing_msg: discord.Message | None = None
+        self.now_playing_channel: discord.TextChannel | None = None
 
     def reset_idle(self, bot: commands.Bot, guild_id: int):
         if self._idle_task:
@@ -390,8 +391,8 @@ class Music(commands.Cog):
         def after(error):
             if error:
                 print(f'Player error: {error}')
-            # Update the now playing embed to "Played"
-            async def _mark_finished():
+            async def _on_finish():
+                # Mark previous embed as played
                 if state.now_playing_msg:
                     try:
                         played_embed = discord.Embed(
@@ -407,7 +408,22 @@ class Music(commands.Cog):
                     except Exception:
                         pass
                     state.now_playing_msg = None
-            asyncio.run_coroutine_threadsafe(_mark_finished(), self.bot.loop)
+                # Post new Now Playing if there's a next track
+                if state.queue and state.now_playing_channel:
+                    next_track = state.queue[0]
+                    embed = discord.Embed(
+                        title="Now playing",
+                        description=f"[{next_track.title}]({next_track.webpage_url})",
+                        color=discord.Color.brand_green()
+                    )
+                    embed.add_field(name="Artist", value=next_track.uploader, inline=True)
+                    embed.add_field(name="Duration", value=format_duration(next_track.duration), inline=True)
+                    if next_track.thumbnail:
+                        embed.set_thumbnail(url=next_track.thumbnail)
+                    view = SkipView(self, guild_id)
+                    msg = await state.now_playing_channel.send(embed=embed, view=view)
+                    state.now_playing_msg = msg
+            asyncio.run_coroutine_threadsafe(_on_finish(), self.bot.loop)
             self.bot.loop.call_soon_threadsafe(self._play_next, vc, state, guild_id)
 
         vc.play(source, after=after)
@@ -429,10 +445,11 @@ class Music(commands.Cog):
             return
 
         state = self._state(ctx.guild.id)
+        state.now_playing_channel = ctx.channel
 
         if vc.is_playing() or vc.is_paused():
             state.queue.append(track)
-            embed = discord.Embed(title="Added to queue", description=f"**{track.title}**", color=discord.Color.blurple())
+            embed = discord.Embed(title="Added to queue", description=f"[{track.title}]({track.webpage_url})", color=discord.Color.blurple())
             embed.add_field(name="Artist", value=track.uploader, inline=True)
             embed.add_field(name="Duration", value=format_duration(track.duration), inline=True)
             embed.add_field(name="Position", value=f"#{len(state.queue)}", inline=True)

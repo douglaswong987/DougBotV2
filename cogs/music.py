@@ -263,7 +263,7 @@ class RelatedSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         url = self.values[0]
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
         track = await fetch_track(url)
         if not track:
             await interaction.followup.send("Couldn't load that track.", ephemeral=True)
@@ -275,11 +275,17 @@ class RelatedSelect(discord.ui.Select):
             return
         if vc.is_playing() or vc.is_paused():
             state.queue.append(track)
-            await interaction.followup.send(f"➕ Added to queue: **{track.title}**", ephemeral=True)
+            embed = discord.Embed(title="Added to queue", description=f"[{track.title}]({track.webpage_url})", color=discord.Color.blurple())
+            embed.add_field(name="Artist", value=track.uploader, inline=True)
+            embed.add_field(name="Duration", value=format_duration(track.duration), inline=True)
+            embed.add_field(name="Position", value=f"#{len(state.queue)}", inline=True)
+            if track.thumbnail:
+                embed.set_thumbnail(url=track.thumbnail)
+            await interaction.followup.send(embed=embed)
         else:
             state.queue.append(track)
             self.cog._play_next(vc, state, self.guild_id)
-            await interaction.followup.send(f"▶️ Now playing: **{track.title}**", ephemeral=True)
+            await interaction.followup.send("▶️ Playing now.")
 
 
 async def fetch_related(webpage_url: str) -> list[dict]:
@@ -459,13 +465,39 @@ class Music(commands.Cog):
             volume=state.volume
         )
 
+        async def _post_now_playing():
+            if not state.now_playing_channel:
+                return
+            embed = discord.Embed(
+                title="Now playing",
+                description=f"[{track.title}]({track.webpage_url})",
+                color=discord.Color.brand_green()
+            )
+            embed.add_field(name="Artist", value=track.uploader, inline=True)
+            embed.add_field(name="Duration", value=format_duration(track.duration), inline=True)
+            if track.thumbnail:
+                embed.set_thumbnail(url=track.thumbnail)
+            view = NowPlayingView(self, guild_id)
+            msg = await state.now_playing_channel.send(embed=embed, view=view)
+            state.now_playing_msg = msg
+            async def _add_related(m=msg, t=track, v=view):
+                related = await fetch_related(t.webpage_url)
+                if related and state.now_playing_msg == m:
+                    v.add_related(related)
+                    try:
+                        await m.edit(view=v)
+                    except Exception:
+                        pass
+            asyncio.ensure_future(_add_related())
+
+        asyncio.run_coroutine_threadsafe(_post_now_playing(), self.bot.loop)
+
         finished_track = track
 
         def after(error):
             if error:
                 print(f'Player error: {error}')
             async def _on_finish():
-                # Mark previous embed as played
                 if state.now_playing_msg:
                     try:
                         played_embed = discord.Embed(
@@ -481,31 +513,6 @@ class Music(commands.Cog):
                     except Exception:
                         pass
                     state.now_playing_msg = None
-                # Post new Now Playing if there's a next track
-                if state.queue and state.now_playing_channel:
-                    next_track = state.queue[0]
-                    embed = discord.Embed(
-                        title="Now playing",
-                        description=f"[{next_track.title}]({next_track.webpage_url})",
-                        color=discord.Color.brand_green()
-                    )
-                    embed.add_field(name="Artist", value=next_track.uploader, inline=True)
-                    embed.add_field(name="Duration", value=format_duration(next_track.duration), inline=True)
-                    if next_track.thumbnail:
-                        embed.set_thumbnail(url=next_track.thumbnail)
-                    view = NowPlayingView(self, guild_id)
-                    msg = await state.now_playing_channel.send(embed=embed, view=view)
-                    state.now_playing_msg = msg
-                    # Fetch related in background and update view
-                    async def _add_related(m=msg, t=next_track, v=view):
-                        related = await fetch_related(t.webpage_url)
-                        if related and state.now_playing_msg == m:
-                            v.add_related(related)
-                            try:
-                                await m.edit(view=v)
-                            except Exception:
-                                pass
-                    asyncio.ensure_future(_add_related())
             asyncio.run_coroutine_threadsafe(_on_finish(), self.bot.loop)
             self.bot.loop.call_soon_threadsafe(self._play_next, vc, state, guild_id)
 
@@ -542,28 +549,6 @@ class Music(commands.Cog):
         else:
             state.queue.append(track)
             self._play_next(vc, state, ctx.guild.id)
-            embed = discord.Embed(
-                title="Now playing",
-                description=f"[{track.title}]({track.webpage_url})",
-                color=discord.Color.brand_green()
-            )
-            embed.add_field(name="Artist", value=track.uploader, inline=True)
-            embed.add_field(name="Duration", value=format_duration(track.duration), inline=True)
-            if track.thumbnail:
-                embed.set_thumbnail(url=track.thumbnail)
-            view = NowPlayingView(self, ctx.guild.id)
-            msg = await ctx.send(embed=embed, view=view)
-            state.now_playing_msg = msg
-            # Fetch related in background
-            async def _add_related(m=msg, t=track, v=view):
-                related = await fetch_related(t.webpage_url)
-                if related and state.now_playing_msg == m:
-                    v.add_related(related)
-                    try:
-                        await m.edit(view=v)
-                    except Exception:
-                        pass
-            asyncio.ensure_future(_add_related())
 
     @commands.hybrid_command(name='skip', description="Skip the current song")
     async def skip(self, ctx: commands.Context):

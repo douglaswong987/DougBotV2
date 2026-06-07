@@ -298,6 +298,7 @@ async def fetch_related(webpage_url: str) -> list[dict]:
             'no_warnings': True,
             'extract_flat': True,
             'playlist_items': '1:11',
+            'extractor_args': {'youtubetab': {'skip': ['authcheck']}},
         }
         if _COOKIE_FILE:
             opts['cookiefile'] = _COOKIE_FILE
@@ -385,7 +386,7 @@ async def fetch_track(query: str) -> Track | None:
 
         dl_opts = dict(opts)
         dl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
-        dl_opts['outtmpl'] = tmp_path + '_%(playlist_index)s.%(ext)s'
+        dl_opts['outtmpl'] = tmp_path + '.%(ext)s'
         dl_opts['quiet'] = True
         dl_opts['ffmpeg_location'] = _FFMPEG_PATH
         dl_opts['ignoreerrors'] = True
@@ -417,6 +418,8 @@ async def fetch_track(query: str) -> Track | None:
                 else:
                     raise RuntimeError('RATE_LIMITED')  # no file = failed download
                 return info
+            except RuntimeError:
+                raise
             except Exception as e:
                 msg = str(e)
                 if '429' in msg or 'Too Many Requests' in msg:

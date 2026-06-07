@@ -404,6 +404,53 @@ async def fetch_related(webpage_url: str) -> list[dict]:
     return await loop.run_in_executor(None, _extract)
 
 
+async def fetch_track_meta(query: str) -> Track | None:
+    """Fetch track metadata only (no download) for queue display."""
+    loop = asyncio.get_event_loop()
+
+    def _extract():
+        opts = {
+            'format': 'bestaudio/best',
+            'quiet': True,
+            'no_warnings': True,
+            'default_search': 'ytsearch',
+            'extract_flat': False,
+            'noplaylist': True,
+        }
+        if _COOKIE_FILE:
+            opts['cookiefile'] = _COOKIE_FILE
+        if _NODE_PATH:
+            opts['js_runtimes'] = {'node': {'path': _NODE_PATH}}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            try:
+                info = ydl.extract_info(query, download=False)
+                if not info:
+                    return None
+                if 'entries' in info:
+                    entries = [e for e in info.get('entries', []) if e]
+                    if not entries:
+                        return None
+                    info = entries[0]
+                return info
+            except Exception:
+                return None
+
+    info = await loop.run_in_executor(None, _extract)
+    if not info:
+        return None
+
+    return Track(
+        title=info.get('title', 'Unknown'),
+        url=query,  # keep original search query as url for download later
+        webpage_url=info.get('webpage_url', ''),
+        duration=info.get('duration', 0),
+        thumbnail=info.get('thumbnail'),
+        uploader=info.get('uploader') or info.get('channel', 'Unknown'),
+        http_headers={},
+        local_file=None,
+    )
+
+
 async def fetch_playlist_and_enqueue(query: str, state, vc, cog, guild_id: int) -> int:
     """Fetch playlist metadata only, enqueue immediately. Downloads happen at play time."""
     loop = asyncio.get_event_loop()
@@ -739,38 +786,54 @@ class Music(commands.Cog):
 
         for t in tracks:
             search_query = f"{t['artist']} {t['title']}"
-            track = Track(
-                title=f"{t['title']} — {t['artist']}",
-                url=search_query,
-                webpage_url='',
-                duration=0,
-                thumbnail=None,
-                uploader=t['artist'],
-                http_headers={},
-                local_file=None,
-            )
+            # Fetch real metadata so queue shows duration, thumbnail, proper title
+            track = await fetch_track_meta(search_query)
+            if not track:
+                # Fallback to placeholder if metadata fetch fails
+                track = Track(
+                    title=f"{t['title']} — {t['artist']}",
+                    url=search_query,
+                    webpage_url='',
+                    duration=0,
+                    thumbnail=None,
+                    uploader=t['artist'],
+                    http_headers={},
+                    local_file=None,
+                )
+            else:
+                # Keep search query as url so download happens correctly later
+                track.url = search_query
             state.queue.append(track)
 
         if not was_playing:
             self._play_next(vc, state, guild_id)
         elif state.now_playing_channel:
             if is_single:
-                track = state.queue[-1]
+                t = state.queue[-1]
                 embed = discord.Embed(
                     title="Added to queue",
-                    description=f"**{track.title}**",
+                    description=f"[{t.title}]({t.webpage_url})" if t.webpage_url else f"**{t.title}**",
                     color=discord.Color.blurple()
                 )
-                embed.add_field(name="Artist", value=track.uploader, inline=True)
+                embed.add_field(name="Artist", value=t.uploader, inline=True)
+                if t.duration:
+                    embed.add_field(name="Duration", value=format_duration(t.duration), inline=True)
                 embed.add_field(name="Position", value=f"#{len(state.queue)}", inline=True)
+                if t.thumbnail:
+                    embed.set_thumbnail(url=t.thumbnail)
                 await state.now_playing_channel.send(embed=embed)
             else:
+                t = state.queue[-len(tracks)]
                 embed = discord.Embed(
                     title="Added to queue",
                     description=f"**{len(tracks)} tracks**",
                     color=discord.Color.blurple()
                 )
-                embed.add_field(name="First track", value=f"**{tracks[0]['title']}** — {tracks[0]['artist']}", inline=False)
+                embed.add_field(
+                    name="First track",
+                    value=f"[{t.title}]({t.webpage_url})" if t.webpage_url else f"**{t.title}**",
+                    inline=False
+                )
                 await state.now_playing_channel.send(embed=embed)
 
     async def _load_playlist(self, query: str, state, vc, guild_id: int):
@@ -905,15 +968,22 @@ class Music(commands.Cog):
         embed = discord.Embed(title="Queue", color=discord.Color.blurple())
 
         if state.current:
+            curr = state.current
+            curr_text = f"[{curr.title}]({curr.webpage_url})" if curr.webpage_url else f"**{curr.title}**"
             embed.add_field(
                 name="Now Playing",
-                value=f"**{state.current.title}** — {state.current.uploader} `{format_duration(state.current.duration)}`",
+                value=f"{curr_text} — {curr.uploader} `{format_duration(curr.duration)}`",
                 inline=False
             )
 
         if state.queue:
             items = list(state.queue)[:10]
-            lines = '\n'.join(f"`{i+1}.` **{t.title}** — {t.uploader} `{format_duration(t.duration)}`" for i, t in enumerate(items))
+            lines = '\n'.join(
+                f"`{i+1}.` [{t.title}]({t.webpage_url}) — {t.uploader} `{format_duration(t.duration)}`"
+                if t.webpage_url else
+                f"`{i+1}.` **{t.title}** — {t.uploader} `{format_duration(t.duration)}`"
+                for i, t in enumerate(items)
+            )
             if len(state.queue) > 10:
                 lines += f"\n*...and {len(state.queue) - 10} more*"
             embed.add_field(name="Up Next", value=lines, inline=False)

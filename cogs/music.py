@@ -682,21 +682,6 @@ class Music(commands.Cog):
                         pass
             asyncio.ensure_future(_add_related())
 
-        # Verify file is playable before attempting
-        if track.local_file:
-            probe = subprocess.run(
-                [_FFMPEG_PATH, '-v', 'error', '-i', track.local_file, '-f', 'null', '-'],
-                capture_output=True, timeout=10
-            )
-            if probe.returncode != 0:
-                print(f"File probe failed for {track.title}: {probe.stderr[:200]}")
-                state._playing = False
-                if track.local_file:
-                    try: os.remove(track.local_file)
-                    except: pass
-                self._play_next(vc, state, guild_id)
-                return
-
         local_file_to_delete = track.local_file
         ffmpeg_opts = {'options': '-vn'} if track.local_file else FFMPEG_OPTIONS
         source = discord.PCMVolumeTransformer(

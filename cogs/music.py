@@ -108,31 +108,46 @@ def _load_opus():
         subprocess.run(['pip', 'install', 'opuslib', '--quiet'], check=True)
     except Exception:
         pass
-    # Extract libopus from Ubuntu deb package
+    # Extract libopus.so from deb using pure Python
     try:
-        import urllib.request
-        deb_path = '/tmp/libopus0.deb'
-        urllib.request.urlretrieve(
-            'https://ftp.debian.org/debian/pool/main/o/opus/libopus0_1.3.1-3_amd64.deb',
-            deb_path
-        )
-        # Extract using ar and tar
-        import shutil
-        extract_dir = '/tmp/opus_extract'
-        os.makedirs(extract_dir, exist_ok=True)
-        subprocess.run(['ar', 'x', deb_path], cwd=extract_dir, check=True)
-        # Find and extract data.tar
-        for f in os.listdir(extract_dir):
-            if f.startswith('data.tar'):
-                subprocess.run(['tar', '-xf', f'{extract_dir}/{f}', '-C', extract_dir, '--wildcards', '*/libopus*'], check=True)
+        import urllib.request, struct, io, gzip, tarfile
+        deb_url = 'https://ftp.debian.org/debian/pool/main/o/opus/libopus0_1.3.1-3_amd64.deb'
+        deb_data = urllib.request.urlopen(deb_url).read()
+
+        # Parse ar archive format manually
+        # ar format: global header (8 bytes) then entries
+        pos = 8  # skip "!<arch>\n"
+        data_tar = None
+        while pos < len(deb_data):
+            # Each entry: 60 byte header
+            if pos + 60 > len(deb_data):
                 break
-        # Find the extracted .so
-        result = subprocess.run(['find', extract_dir, '-name', 'libopus*.so*'], capture_output=True, text=True)
-        so_files = result.stdout.strip().splitlines()
-        if so_files:
-            discord.opus.load_opus(so_files[0])
-            print(f"opus loaded from deb: {so_files[0]}")
-            return
+            name = deb_data[pos:pos+16].decode('ascii').strip()
+            size = int(deb_data[pos+48:pos+58].decode('ascii').strip())
+            pos += 60
+            content_bytes = deb_data[pos:pos+size]
+            pos += size + (size % 2)  # pad to even
+            if name.startswith('data.tar'):
+                data_tar = (name, content_bytes)
+                break
+
+        if data_tar:
+            name, content_bytes = data_tar
+            if name.endswith('.gz'):
+                fileobj = io.BytesIO(gzip.decompress(content_bytes))
+            else:
+                fileobj = io.BytesIO(content_bytes)
+            with tarfile.open(fileobj=fileobj) as tar:
+                for member in tar.getmembers():
+                    if 'libopus.so' in member.name and not member.name.endswith('.a'):
+                        f = tar.extractfile(member)
+                        opus_path = '/tmp/libopus.so.0'
+                        with open(opus_path, 'wb') as out:
+                            out.write(f.read())
+                        os.chmod(opus_path, 0o755)
+                        discord.opus.load_opus(opus_path)
+                        print(f"opus loaded from deb: {opus_path}")
+                        return
     except Exception as e:
         print(f"opus deb extract failed: {e}")
 

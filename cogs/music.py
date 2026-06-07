@@ -113,7 +113,7 @@ def _load_opus():
         import urllib.request
         deb_path = '/tmp/libopus0.deb'
         urllib.request.urlretrieve(
-            'http://archive.ubuntu.com/ubuntu/pool/main/o/opus/libopus0_1.3.1-3_amd64.deb',
+            'https://ftp.debian.org/debian/pool/main/o/opus/libopus0_1.3.1-3_amd64.deb',
             deb_path
         )
         # Extract using ar and tar

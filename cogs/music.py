@@ -188,12 +188,14 @@ except ImportError:
 
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
-    'quiet': False,
-    'no_warnings': False,
+    'quiet': True,
+    'no_warnings': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
     'extract_flat': False,
     'remote_components': ['ejs:github'],
+    'sleep_interval': 2,
+    'max_sleep_interval': 5,
 }
 
 FFMPEG_OPTIONS = {
@@ -408,9 +410,17 @@ async def fetch_track(query: str) -> Track | None:
                 import glob
                 files = glob.glob(tmp_path + '.*')
                 if files:
+                    if os.path.getsize(files[0]) < 4096:  # less than 4KB = bad download
+                        os.remove(files[0])
+                        raise RuntimeError('RATE_LIMITED')
                     info['_local_file'] = files[0]
+                else:
+                    raise RuntimeError('RATE_LIMITED')  # no file = failed download
                 return info
             except Exception as e:
+                msg = str(e)
+                if '429' in msg or 'Too Many Requests' in msg:
+                    raise RuntimeError('RATE_LIMITED') from e
                 print(f"yt-dlp download error: {e}")
                 return None
 
@@ -541,7 +551,18 @@ class Music(commands.Cog):
     async def _download_and_play(self, vc: discord.VoiceClient, state: GuildMusic, guild_id: int, track: Track):
         # Download if not already downloaded
         if not track.local_file:
-            downloaded = await fetch_track(track.url)
+            try:
+                downloaded = await fetch_track(track.url)
+            except RuntimeError as e:
+                if 'RATE_LIMITED' in str(e):
+                    print(f"Rate limited — pausing queue for 60s")
+                    state._playing = False
+                    state.queue.appendleft(track)  # put it back
+                    state.current = None
+                    await asyncio.sleep(60)
+                    self._play_next(vc, state, guild_id)
+                    return
+                downloaded = None
             if not downloaded or isinstance(downloaded, list):
                 print(f"Skipping unavailable track: {track.title}")
                 state._playing = False

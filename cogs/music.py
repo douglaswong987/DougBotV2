@@ -97,6 +97,19 @@ def _test_ffmpeg(path):
         print(f"FFmpeg {path} test error: {e}")
         return False
 
+# Test if ffmpeg can actually fetch URLs
+def _test_ffmpeg_url():
+    try:
+        test_cmd = [_FFMPEG_PATH, '-v', 'quiet', '-i', 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3', '-t', '1', '-f', 'null', '-']
+        result = subprocess.run(test_cmd, capture_output=True, text=True, timeout=15)
+        print(f"FFmpeg URL test code: {result.returncode}")
+        if result.stderr:
+            print(f"FFmpeg URL test stderr: {result.stderr[:200]}")
+    except Exception as e:
+        print(f"FFmpeg URL test failed: {e}")
+
+_test_ffmpeg_url()
+
 if not _test_ffmpeg(_FFMPEG_PATH):
     # Try imageio as fallback
     try:

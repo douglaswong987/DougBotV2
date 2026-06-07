@@ -478,31 +478,35 @@ async def fetch_track(query: str) -> Track | None:
         with yt_dlp.YoutubeDL(dl_opts) as ydl:
             try:
                 info = ydl.extract_info(query, download=True)
-                print(f"extract_info result type: {type(info)}, keys: {list(info.keys()) if info else None}")
                 if not info:
                     return None
-                # If playlist, return all entries
+                # For search queries, entries contains results — take the first one
                 if 'entries' in info:
-                    import glob
-                    results = []
-                    for i, entry in enumerate(info['entries'], 1):
-                        if not entry:
-                            continue
-                        entry_files = glob.glob(f'{tmp_path}_{i:02d}.*') or glob.glob(f'{tmp_path}_{i}.*')
-                        if entry_files:
-                            entry['_local_file'] = entry_files[0]
-                        results.append(entry)
-                    return {'_playlist': True, '_entries': results, 'title': info.get('title', 'Playlist')}
+                    if query.startswith('ytsearch:') or info.get('extractor') in ('youtube:search', 'YoutubeSearch'):
+                        entries = [e for e in info.get('entries', []) if e]
+                        if not entries:
+                            return None
+                        info = entries[0]
+                    else:
+                        import glob
+                        results = []
+                        for i, entry in enumerate(info['entries'], 1):
+                            if not entry:
+                                continue
+                            entry_files = glob.glob(f'{tmp_path}_{i:02d}.*') or glob.glob(f'{tmp_path}_{i}.*')
+                            if entry_files:
+                                entry['_local_file'] = entry_files[0]
+                            results.append(entry)
+                        return {'_playlist': True, '_entries': results, 'title': info.get('title', 'Playlist')}
                 import glob
                 files = glob.glob(tmp_path + '.*')
-                print(f"Downloaded files for {tmp_path}: {files}")
                 if files:
-                    if os.path.getsize(files[0]) < 4096:  # less than 4KB = bad download
+                    if os.path.getsize(files[0]) < 4096:
                         os.remove(files[0])
                         raise RuntimeError('RATE_LIMITED')
                     info['_local_file'] = files[0]
                 else:
-                    raise RuntimeError('RATE_LIMITED')  # no file = failed download
+                    raise RuntimeError('RATE_LIMITED')
                 return info
             except RuntimeError:
                 raise

@@ -225,6 +225,22 @@ def format_duration(seconds: int) -> str:
     return f"{minutes}:{secs:02d}"
 
 
+class SkipView(discord.ui.View):
+    def __init__(self, cog, guild_id: int):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.guild_id = guild_id
+
+    @discord.ui.button(label='⏭ Skip', style=discord.ButtonStyle.secondary)
+    async def skip_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        vc: discord.VoiceClient = interaction.guild.voice_client
+        if not vc or not vc.is_playing():
+            await interaction.response.send_message("Nothing is playing.", ephemeral=True)
+            return
+        vc.stop()
+        await interaction.response.send_message("⏭️ Skipped.", ephemeral=True)
+
+
 async def fetch_track(query: str) -> Track | None:
     yt_clean = re.match(r'https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]+)', query)
     if yt_clean:
@@ -312,6 +328,7 @@ class GuildMusic:
         self.current: Track | None = None
         self.volume: float = 0.5
         self._idle_task: asyncio.Task | None = None
+        self.now_playing_msg: discord.Message | None = None
 
     def reset_idle(self, bot: commands.Bot, guild_id: int):
         if self._idle_task:
@@ -368,9 +385,29 @@ class Music(commands.Cog):
             volume=state.volume
         )
 
+        finished_track = track
+
         def after(error):
             if error:
                 print(f'Player error: {error}')
+            # Update the now playing embed to "Played"
+            async def _mark_finished():
+                if state.now_playing_msg:
+                    try:
+                        played_embed = discord.Embed(
+                            title="Played",
+                            description=f"[{finished_track.title}]({finished_track.webpage_url})",
+                            color=discord.Color.greyple()
+                        )
+                        played_embed.add_field(name="Artist", value=finished_track.uploader, inline=True)
+                        played_embed.add_field(name="Duration", value=format_duration(finished_track.duration), inline=True)
+                        if finished_track.thumbnail:
+                            played_embed.set_thumbnail(url=finished_track.thumbnail)
+                        await state.now_playing_msg.edit(embed=played_embed, view=None)
+                    except Exception:
+                        pass
+                    state.now_playing_msg = None
+            asyncio.run_coroutine_threadsafe(_mark_finished(), self.bot.loop)
             self.bot.loop.call_soon_threadsafe(self._play_next, vc, state, guild_id)
 
         vc.play(source, after=after)
@@ -405,12 +442,18 @@ class Music(commands.Cog):
         else:
             state.queue.append(track)
             self._play_next(vc, state, ctx.guild.id)
-            embed = discord.Embed(title="Now playing", description=f"**{track.title}**", color=discord.Color.brand_green(), url=track.webpage_url)
+            embed = discord.Embed(
+                title="Now playing",
+                description=f"[{track.title}]({track.webpage_url})",
+                color=discord.Color.brand_green()
+            )
             embed.add_field(name="Artist", value=track.uploader, inline=True)
             embed.add_field(name="Duration", value=format_duration(track.duration), inline=True)
             if track.thumbnail:
                 embed.set_thumbnail(url=track.thumbnail)
-            await ctx.send(embed=embed)
+            view = SkipView(self, ctx.guild.id)
+            msg = await ctx.send(embed=embed, view=view)
+            state.now_playing_msg = msg
 
     @commands.hybrid_command(name='skip', description="Skip the current song")
     async def skip(self, ctx: commands.Context):
@@ -489,7 +532,7 @@ class Music(commands.Cog):
             return
 
         track = state.current
-        embed = discord.Embed(title="Now Playing", description=f"**{track.title}**", color=discord.Color.blurple(), url=track.webpage_url)
+        embed = discord.Embed(title="Now Playing", description=f"[{track.title}]({track.webpage_url})", color=discord.Color.blurple())
         embed.add_field(name="Artist", value=track.uploader, inline=True)
         embed.add_field(name="Duration", value=format_duration(track.duration), inline=True)
         if track.thumbnail:

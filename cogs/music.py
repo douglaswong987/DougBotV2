@@ -258,15 +258,19 @@ async def fetch_track(query: str) -> Track | None:
     url = info.get('url', '')
     http_headers = info.get('http_headers', {})
     formats = info.get('formats', [])
-    # Prefer non-HLS formats (direct audio streams)
-    for fmt in formats:
-        ext = fmt.get('ext', '')
-        protocol = fmt.get('protocol', '')
-        if ext in ('webm', 'm4a', 'opus') and 'hls' not in protocol and fmt.get('url'):
-            url = fmt['url']
-            http_headers = fmt.get('http_headers', http_headers)
-            print(f"Using direct format: {fmt.get('format_id')} ext={ext}")
-            break
+    # Prefer m4a then webm (non-HLS direct streams)
+    for preferred_ext in ['m4a', 'webm', 'opus']:
+        for fmt in formats:
+            ext = fmt.get('ext', '')
+            protocol = fmt.get('protocol', '')
+            if ext == preferred_ext and 'hls' not in protocol and fmt.get('url'):
+                url = fmt['url']
+                http_headers = fmt.get('http_headers', http_headers)
+                print(f"Using direct format: {fmt.get('format_id')} ext={ext}")
+                break
+        else:
+            continue
+        break
 
     # Build ffmpeg header string
     headers_str = ''.join(f'{k}: {v}\r\n' for k, v in http_headers.items())

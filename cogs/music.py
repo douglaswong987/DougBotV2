@@ -340,19 +340,18 @@ class Music(commands.Cog):
         track = state.queue.popleft()
         state.current = track
 
-        # Test FFmpeg directly to get error output
-        import tempfile
-        test_cmd = [_FFMPEG_PATH, '-v', 'error', '-i', track.url, '-t', '1', '-f', 'null', '-']
-        test = subprocess.run(test_cmd, capture_output=True, text=True, timeout=10)
-        print(f"FFmpeg test stdout: {test.stdout[:200]}")
-        print(f"FFmpeg test stderr: {test.stderr[:500]}")
-        print(f"FFmpeg test returncode: {test.returncode}")
-
-        # Build before_options with auth headers if present
-        before_opts = FFMPEG_OPTIONS['before_options']
+        # Build before_options with auth headers
+        headers_str = ''
         if track.http_headers:
-            headers_str = ''.join(f'{k}: {v}\r\n' for k, v in track.http_headers.items())
-            before_opts = f'-headers "{headers_str}" {before_opts}'
+            for k, v in track.http_headers.items():
+                headers_str += f'{k}: {v}\r\n'
+
+        before_opts = f'-headers "{headers_str}" {FFMPEG_OPTIONS["before_options"]}' if headers_str else FFMPEG_OPTIONS['before_options']
+
+        print(f"Playing URL: {track.url[:100]}")
+        print(f"FFmpeg path: {_FFMPEG_PATH}")
+        print(f"Headers: {list(track.http_headers.keys()) if track.http_headers else None}")
+
         source = discord.PCMVolumeTransformer(
             discord.FFmpegPCMAudio(track.url, executable=_FFMPEG_PATH,
                                    before_options=before_opts,

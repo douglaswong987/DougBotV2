@@ -77,10 +77,10 @@ def _find_ffmpeg():
         ffmpeg_dir = '/tmp/ffmpeg'
         os.makedirs(ffmpeg_dir, exist_ok=True)
         ffmpeg_path = f'{ffmpeg_dir}/ffmpeg'
-        url = 'https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz'
-        tar_path = f'{ffmpeg_dir}/ffmpeg.tar.xz'
-        urllib.request.urlretrieve(url, tar_path)
-        subprocess.run(['tar', '-xf', tar_path, '-C', ffmpeg_dir, '--strip-components=2', '--wildcards', '*/bin/ffmpeg'], check=True)
+        # Download pre-extracted static ffmpeg binary directly
+        url = 'https://github.com/nicholasgasior/ffmpeg-builds/releases/download/latest/ffmpeg-linux-amd64'
+        urllib.request.urlretrieve(url, ffmpeg_path)
+        print(f'Downloaded {os.path.getsize(ffmpeg_path)} bytes')
         os.chmod(ffmpeg_path, os.stat(ffmpeg_path).st_mode | stat.S_IEXEC)
         print(f"ffmpeg downloaded to: {ffmpeg_path}")
         return ffmpeg_path

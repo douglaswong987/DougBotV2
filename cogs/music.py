@@ -369,6 +369,7 @@ async def fetch_track(query: str) -> Track | None:
     yt_clean = re.match(r'https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]+)', query)
     if yt_clean:
         query = f'https://www.youtube.com/watch?v={yt_clean.group(1)}'
+        # Also add noplaylist to prevent yt-dlp from expanding it
 
     loop = asyncio.get_event_loop()
 
@@ -390,6 +391,7 @@ async def fetch_track(query: str) -> Track | None:
         dl_opts['quiet'] = True
         dl_opts['ffmpeg_location'] = _FFMPEG_PATH
         dl_opts['ignoreerrors'] = True
+        dl_opts['noplaylist'] = True
 
         with yt_dlp.YoutubeDL(dl_opts) as ydl:
             try:
@@ -671,9 +673,20 @@ class Music(commands.Cog):
         state = self._state(ctx.guild.id)
         state.now_playing_channel = ctx.channel
 
-        # Detect playlist URLs and handle with streaming downloader
-        is_playlist = ('list=' in query and 'watch?v=' not in query) or ('playlist?list=' in query)
-        if is_playlist or (query.startswith('http') and 'list=' in query and 'watch?v=' not in query):
+        # Detect explicit playlist URLs only (not radio/mix/watch links)
+        # Radio/mix lists start with RD, AL, LL, etc. Explicit playlists start with PL
+        import urllib.parse
+        parsed = urllib.parse.urlparse(query)
+        qs = urllib.parse.parse_qs(parsed.query)
+        list_id = qs.get('list', [''])[0]
+        is_explicit_playlist = (
+            query.startswith('http') and
+            list_id.startswith('PL') and
+            'watch?v=' not in query and
+            'youtu.be' not in query
+        ) or 'playlist?list=PL' in query
+
+        if is_explicit_playlist:
             await ctx.send("📋 Loading playlist... playback will start as tracks become ready.", delete_after=5)
             asyncio.ensure_future(self._load_playlist(query, state, vc, ctx.guild.id))
             return

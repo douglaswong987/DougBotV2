@@ -108,10 +108,19 @@ def _load_opus():
         subprocess.run(['pip', 'install', 'opuslib', '--quiet'], check=True)
     except Exception:
         pass
-    # Last resort - search entire filesystem
-    result = subprocess.run(['find', '/', '-name', 'libopus*', '-maxdepth', '8'], 
-                          capture_output=True, text=True, timeout=15)
-    print(f"opus files found: {result.stdout.strip()[:300]}")
+    # Download Linux opus shared library
+    try:
+        import urllib.request, stat
+        opus_path = '/tmp/libopus.so.0'
+        urllib.request.urlretrieve(
+            'https://github.com/discordjs/opus/releases/download/0.9.0/linux-x64-111-libopus.so',
+            opus_path
+        )
+        discord.opus.load_opus(opus_path)
+        print(f"opus loaded from download: {opus_path}")
+        return
+    except Exception as e:
+        print(f"opus download failed: {e}")
 
 _load_opus()
 

@@ -188,7 +188,6 @@ except ImportError:
 
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
-    'noplaylist': True,
     'quiet': False,
     'no_warnings': False,
     'default_search': 'ytsearch',
@@ -231,7 +230,7 @@ class NowPlayingView(discord.ui.View):
         self.cog = cog
         self.guild_id = guild_id
 
-    @discord.ui.button(label='⏭ Skip', style=discord.ButtonStyle.danger)
+    @discord.ui.button(label='⏭ Skip', style=discord.ButtonStyle.danger, row=1)
     async def skip_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         vc: discord.VoiceClient = interaction.guild.voice_client
         if not vc or not vc.is_playing():
@@ -257,7 +256,7 @@ class NowPlayingView(discord.ui.View):
 
 class RelatedSelect(discord.ui.Select):
     def __init__(self, cog, guild_id: int, options: list[discord.SelectOption]):
-        super().__init__(placeholder='Play a related song...', options=options, row=1)
+        super().__init__(placeholder='Play a related song...', options=options, row=0)
         self.cog = cog
         self.guild_id = guild_id
 
@@ -341,16 +340,25 @@ async def fetch_track(query: str) -> Track | None:
 
         dl_opts = dict(opts)
         dl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
-        dl_opts['outtmpl'] = tmp_path + '.%(ext)s'
+        dl_opts['outtmpl'] = tmp_path + '_%(playlist_index)s.%(ext)s'
         dl_opts['quiet'] = True
         dl_opts['ffmpeg_location'] = _FFMPEG_PATH
 
         with yt_dlp.YoutubeDL(dl_opts) as ydl:
             try:
                 info = ydl.extract_info(query, download=True)
+                # If playlist, return all entries
                 if 'entries' in info:
-                    info = info['entries'][0]
-                # Find the downloaded file
+                    import glob
+                    results = []
+                    for i, entry in enumerate(info['entries'], 1):
+                        if not entry:
+                            continue
+                        entry_files = glob.glob(f'{tmp_path}_{i:02d}.*') or glob.glob(f'{tmp_path}_{i}.*')
+                        if entry_files:
+                            entry['_local_file'] = entry_files[0]
+                        results.append(entry)
+                    return {'_playlist': True, '_entries': results, 'title': info.get('title', 'Playlist')}
                 import glob
                 files = glob.glob(tmp_path + '.*')
                 if files:
@@ -364,6 +372,23 @@ async def fetch_track(query: str) -> Track | None:
     if not info:
         return None
 
+    # Handle playlist
+    if info.get('_playlist'):
+        tracks = []
+        for entry in info.get('_entries', []):
+            local_file = entry.get('_local_file')
+            tracks.append(Track(
+                title=entry.get('title', 'Unknown'),
+                url=local_file or entry.get('url', ''),
+                webpage_url=entry.get('webpage_url') or f"https://www.youtube.com/watch?v={entry.get('id', '')}",
+                duration=entry.get('duration', 0),
+                thumbnail=entry.get('thumbnail'),
+                uploader=entry.get('uploader') or entry.get('channel', 'Unknown'),
+                http_headers={},
+                local_file=local_file,
+            ))
+        return tracks if tracks else None
+
     # Try to get a direct audio URL rather than HLS manifest
     url = info.get('url', '')
     http_headers = info.get('http_headers', {})
@@ -376,16 +401,10 @@ async def fetch_track(query: str) -> Track | None:
             if ext == preferred_ext and 'hls' not in protocol and fmt.get('url'):
                 url = fmt['url']
                 http_headers = fmt.get('http_headers', http_headers)
-                print(f"Using direct format: {fmt.get('format_id')} ext={ext}")
                 break
         else:
             continue
         break
-
-    # Build ffmpeg header string
-    headers_str = ''.join(f'{k}: {v}\r\n' for k, v in http_headers.items())
-    if headers_str:
-        headers_str = f'-headers {repr(headers_str)}'
 
     local_file = info.get('_local_file')
 
@@ -465,6 +484,7 @@ class Music(commands.Cog):
             volume=state.volume
         )
 
+        # Post Now Playing embed for this track
         async def _post_now_playing():
             if not state.now_playing_channel:
                 return
@@ -528,14 +548,29 @@ class Music(commands.Cog):
         if not vc:
             return
 
-        track = await fetch_track(query)
+        result = await fetch_track(query)
 
-        if not track:
+        if not result:
             await ctx.send("Could not find or load that track. Try a different search.", ephemeral=True)
             return
 
         state = self._state(ctx.guild.id)
         state.now_playing_channel = ctx.channel
+
+        # Handle playlist
+        if isinstance(result, list):
+            was_playing = vc.is_playing() or vc.is_paused()
+            for t in result:
+                state.queue.append(t)
+            embed = discord.Embed(title="📋 Playlist added to queue", color=discord.Color.blurple())
+            embed.add_field(name="Tracks", value=str(len(result)), inline=True)
+            embed.add_field(name="First track", value=f"[{result[0].title}]({result[0].webpage_url})", inline=True)
+            await ctx.send(embed=embed)
+            if not was_playing:
+                self._play_next(vc, state, ctx.guild.id)
+            return
+
+        track = result
 
         if vc.is_playing() or vc.is_paused():
             state.queue.append(track)
@@ -549,6 +584,7 @@ class Music(commands.Cog):
         else:
             state.queue.append(track)
             self._play_next(vc, state, ctx.guild.id)
+            await ctx.send("⏳ Loading...", delete_after=0)
 
     @commands.hybrid_command(name='skip', description="Skip the current song")
     async def skip(self, ctx: commands.Context):

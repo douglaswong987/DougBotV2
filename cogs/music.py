@@ -12,6 +12,24 @@ import yt_dlp
 from discord import app_commands
 from discord.ext import commands
 
+try:
+    import spotipy
+    from spotipy.oauth2 import SpotifyClientCredentials
+    _SP_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
+    _SP_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
+    if _SP_CLIENT_ID and _SP_CLIENT_SECRET:
+        _spotify = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+            client_id=_SP_CLIENT_ID,
+            client_secret=_SP_CLIENT_SECRET
+        ))
+        print("Spotify client ready")
+    else:
+        _spotify = None
+        print("Spotify credentials not set")
+except Exception as e:
+    _spotify = None
+    print(f"Spotify init failed: {e}")
+
 _COOKIE_FILE = None
 
 def _setup_cookies():
@@ -287,6 +305,49 @@ class RelatedSelect(discord.ui.Select):
             state.queue.append(track)
             self.cog._play_next(vc, state, self.guild_id)
             await interaction.followup.send("▶️ Playing now.")
+
+
+async def fetch_spotify_tracks(spotify_url: str) -> list[dict]:
+    """Get track metadata from a Spotify URL (track, album, or playlist)."""
+    if not _spotify:
+        return []
+    loop = asyncio.get_event_loop()
+
+    def _fetch():
+        try:
+            if '/track/' in spotify_url:
+                track = _spotify.track(spotify_url)
+                return [{'title': track['name'], 'artist': track['artists'][0]['name']}]
+            elif '/playlist/' in spotify_url:
+                results = []
+                offset = 0
+                while True:
+                    resp = _spotify.playlist_tracks(spotify_url, offset=offset, limit=100)
+                    for item in resp['items']:
+                        t = item.get('track')
+                        if t and t.get('name'):
+                            results.append({'title': t['name'], 'artist': t['artists'][0]['name']})
+                    if resp['next'] is None:
+                        break
+                    offset += 100
+                return results
+            elif '/album/' in spotify_url:
+                results = []
+                offset = 0
+                while True:
+                    resp = _spotify.album_tracks(spotify_url, offset=offset, limit=50)
+                    album = _spotify.album(spotify_url)
+                    for t in resp['items']:
+                        results.append({'title': t['name'], 'artist': t['artists'][0]['name']})
+                    if resp['next'] is None:
+                        break
+                    offset += 50
+                return results
+        except Exception as e:
+            print(f"Spotify fetch error: {e}")
+            return []
+
+    return await loop.run_in_executor(None, _fetch)
 
 
 async def fetch_related(webpage_url: str) -> list[dict]:
@@ -654,6 +715,38 @@ class Music(commands.Cog):
         vc.play(source, after=after)
         state.cancel_idle()
 
+    async def _load_spotify(self, spotify_url: str, state, vc, guild_id: int, is_single: bool):
+        tracks = await fetch_spotify_tracks(spotify_url)
+        if not tracks:
+            if state.now_playing_channel:
+                await state.now_playing_channel.send("❌ Couldn't load from Spotify.")
+            return
+
+        was_playing = vc.is_playing() or vc.is_paused()
+
+        for t in tracks:
+            # Queue as YouTube search query
+            search_query = f"ytsearch:{t['artist']} {t['title']}"
+            track = Track(
+                title=f"{t['title']} — {t['artist']}",
+                url=search_query,
+                webpage_url='',
+                duration=0,
+                thumbnail=None,
+                uploader=t['artist'],
+                http_headers={},
+                local_file=None,
+            )
+            state.queue.append(track)
+
+        if not was_playing and not state._playing:
+            self._play_next(vc, state, guild_id)
+
+        if state.now_playing_channel and not is_single:
+            await state.now_playing_channel.send(
+                f"✅ Loaded **{len(tracks)}** tracks from Spotify.", delete_after=10
+            )
+
     async def _load_playlist(self, query: str, state, vc, guild_id: int):
         count = await fetch_playlist_and_enqueue(query, state, vc, self, guild_id)
         if count == 0 and state.now_playing_channel:
@@ -672,6 +765,16 @@ class Music(commands.Cog):
 
         state = self._state(ctx.guild.id)
         state.now_playing_channel = ctx.channel
+
+        # Detect Spotify URLs
+        if 'open.spotify.com' in query:
+            if not _spotify:
+                await ctx.send("Spotify support not configured.", ephemeral=True)
+                return
+            is_single = '/track/' in query
+            await ctx.send(f"{'🎵' if is_single else '📋'} Loading from Spotify...", delete_after=5)
+            asyncio.ensure_future(self._load_spotify(query, state, vc, ctx.guild.id, is_single))
+            return
 
         # Detect explicit playlist URLs only (not radio/mix/watch links)
         # Radio/mix lists start with RD, AL, LL, etc. Explicit playlists start with PL

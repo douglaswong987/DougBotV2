@@ -82,6 +82,17 @@ def _find_ffmpeg():
 
 _FFMPEG_PATH = _find_ffmpeg()
 
+# Load opus
+try:
+    discord.opus.load_opus('libopus.so.0')
+    print("opus loaded: libopus.so.0")
+except Exception:
+    try:
+        discord.opus.load_opus('libopus')
+        print("opus loaded: libopus")
+    except Exception as e:
+        print(f"opus load failed: {e}")
+
 try:
     import yt_dlp_ejs
     print(f"yt-dlp-ejs found: {yt_dlp_ejs._version.__version__}")

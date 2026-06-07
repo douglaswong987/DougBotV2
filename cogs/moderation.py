@@ -13,7 +13,6 @@ class Moderation(commands.Cog):
         return self.bot.db
 
     async def get_log_channel(self, guild_id: int) -> discord.TextChannel | None:
-        """Fetch the configured log channel for a guild, if set."""
         channel_id = await self.db.get_config(guild_id, 'log_channel')
         if not channel_id:
             return None
@@ -106,6 +105,10 @@ class Moderation(commands.Cog):
             return
         channel = self.bot.get_channel(payload.channel_id)
         msg = payload.cached_message
+
+        # Ignore bot messages
+        if msg and msg.author.bot:
+            return
 
         embed = discord.Embed(
             title=f"🗑️ Message deleted in {channel.mention if channel else 'unknown channel'}",

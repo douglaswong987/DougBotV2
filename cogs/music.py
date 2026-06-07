@@ -494,6 +494,7 @@ async def fetch_track(query: str) -> Track | None:
                     return {'_playlist': True, '_entries': results, 'title': info.get('title', 'Playlist')}
                 import glob
                 files = glob.glob(tmp_path + '.*')
+                print(f"Downloaded files for {tmp_path}: {files}")
                 if files:
                     if os.path.getsize(files[0]) < 4096:  # less than 4KB = bad download
                         os.remove(files[0])

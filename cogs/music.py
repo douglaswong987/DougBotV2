@@ -735,10 +735,9 @@ class Music(commands.Cog):
                 await state.now_playing_channel.send("❌ Couldn't load from Spotify.")
             return
 
-        was_playing = vc.is_playing() or vc.is_paused()
+        was_playing = vc.is_playing() or vc.is_paused() or state._playing
 
         for t in tracks:
-            # Queue as YouTube search query
             search_query = f"{t['artist']} {t['title']}"
             track = Track(
                 title=f"{t['title']} — {t['artist']}",
@@ -752,8 +751,27 @@ class Music(commands.Cog):
             )
             state.queue.append(track)
 
-        if not was_playing and not state._playing:
+        if not was_playing:
             self._play_next(vc, state, guild_id)
+        elif state.now_playing_channel:
+            if is_single:
+                track = state.queue[-1]
+                embed = discord.Embed(
+                    title="Added to queue",
+                    description=f"**{track.title}**",
+                    color=discord.Color.blurple()
+                )
+                embed.add_field(name="Artist", value=track.uploader, inline=True)
+                embed.add_field(name="Position", value=f"#{len(state.queue)}", inline=True)
+                await state.now_playing_channel.send(embed=embed)
+            else:
+                embed = discord.Embed(
+                    title="Added to queue",
+                    description=f"**{len(tracks)} tracks**",
+                    color=discord.Color.blurple()
+                )
+                embed.add_field(name="First track", value=f"**{tracks[0]['title']}** — {tracks[0]['artist']}", inline=False)
+                await state.now_playing_channel.send(embed=embed)
 
     async def _load_playlist(self, query: str, state, vc, guild_id: int):
         count = await fetch_playlist_and_enqueue(query, state, vc, self, guild_id)

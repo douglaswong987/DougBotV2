@@ -55,15 +55,6 @@ The SQLite database (`dougbot.db`) is created automatically on first run.
 | `/meatchud` | MeatChude |
 | `/fight <user1> <user2>` | FIGHT TO THE DEATH |
 
-### Music
-| Command | Description |
-|---|---|
-| `/play <link>` | Play music from Youtube, Spotify, Soundcloud |
-| `/skip` | Skips current song |
-| `/stop` | Stops current play session |
-| `/pause` | Pause current song |
-| `/queue` | View current queue |
-
 ### Reminders
 | Command | Description |
 |---|---|
@@ -79,6 +70,9 @@ The SQLite database (`dougbot.db`) is created automatically on first run.
 | `/logs set <#channel>` | Set where event logs are sent |
 | `/logs clear` | Disable logging |
 | `/logs status` | Show current log channel |
+| `/cockmax set <inches>` | Set the max `/cock` length (default 13) |
+| `/cockmax reset` | Reset the max to default |
+| `/cockmax status` | Show the current max |
 | `/insults adduser @user` | Add a user to the random insult pool |
 | `/insults removeuser @user` | Remove a user |
 | `/insults addrole @role` | Add a whole role |

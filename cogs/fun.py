@@ -1,11 +1,25 @@
 import random
-import asyncio
-from datetime import datetime
-import pytz
+from datetime import datetime, time, timedelta
 import discord
 from discord.ext import commands
 from discord import app_commands
 from discord.ext import tasks
+
+from database import TZ, today_pst
+
+COCK_MIN = 0.01
+DEFAULT_COCK_MAX = 13.00
+
+
+def next_midnight() -> datetime:
+    """The next local midnight in TZ, with the correct UTC offset for that date (DST-safe)."""
+    tomorrow = datetime.now(TZ).date() + timedelta(days=1)
+    return TZ.localize(datetime.combine(tomorrow, time.min))
+
+
+async def get_cock_max(db, guild_id: int) -> float:
+    value = await db.get_config(guild_id, 'cock_max')
+    return float(value) if value else DEFAULT_COCK_MAX
 
 INSULTS = [
     "you are so fucking STUPID",
@@ -63,8 +77,11 @@ class Fun(commands.Cog):
     def cog_unload(self):
         self.midnight_reset.cancel()
 
-    @tasks.loop(hours=24)
+    @tasks.loop()
     async def midnight_reset(self):
+        # Recompute the next local midnight every iteration instead of looping every 24h,
+        # so DST transitions (23h / 25h days) don't drift the announcement off midnight.
+        await discord.utils.sleep_until(next_midnight() + timedelta(seconds=1))
         async with self.bot.db.conn.execute(
             "SELECT guild_id, value FROM guild_config WHERE key='log_channel'"
         ) as cur:
@@ -82,14 +99,7 @@ class Fun(commands.Cog):
 
     @midnight_reset.before_loop
     async def before_midnight_reset(self):
-        """Sleep until the next midnight PST before starting the 24h loop."""
         await self.bot.wait_until_ready()
-        tz = pytz.timezone("US/Pacific")
-        now = datetime.now(tz)
-        from datetime import timedelta
-        tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-        delay = (tomorrow - now).total_seconds()
-        await asyncio.sleep(delay)
 
     # ------------------------------------------------------------------
     # Cock
@@ -97,16 +107,19 @@ class Fun(commands.Cog):
 
     @commands.hybrid_command(name='cock', description="Generate your cock length for the day")
     async def cock(self, ctx: commands.Context):
+        max_length = await get_cock_max(self.db, ctx.guild.id)
         length = await self.db.get_cock_length(ctx.author.id, ctx.guild.id)
         if length is None:
-            length = round(random.uniform(0.01, 13.00), 2)
+            length = round(random.uniform(COCK_MIN, max_length), 2)
             await self.db.set_cock_length(ctx.author.id, ctx.guild.id, length)
 
-        if length >= 9.00:
+        # Thresholds scale with the configured max (9 / 6.5 / 4 at the default of 13)
+        scale = max_length / DEFAULT_COCK_MAX
+        if length >= 9.00 * scale:
             suffix = ' GOD DAMN 🥵🍆'
-        elif length >= 6.50:
+        elif length >= 6.50 * scale:
             suffix = ' OK we take those'
-        elif length >= 4.00:
+        elif length >= 4.00 * scale:
             suffix = " that's pretty average"
         else:
             suffix = ' hahahaha SMALL COCK 🤏'
@@ -115,7 +128,7 @@ class Fun(commands.Cog):
 
     @commands.hybrid_command(name='cockcharts', description="Daily cock length leaderboard")
     async def cockcharts(self, ctx: commands.Context):
-        today = datetime.now(pytz.timezone("US/Pacific")).strftime("%Y-%m-%d")
+        today = today_pst()
         rows = await self.db.get_cock_leaderboard(ctx.guild.id)
 
         embed = discord.Embed(

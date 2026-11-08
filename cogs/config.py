@@ -2,7 +2,9 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from cogs.fun import INSULTS as DEFAULT_INSULTS
+from cogs.fun import INSULTS as DEFAULT_INSULTS, COCK_MIN, DEFAULT_COCK_MAX, get_cock_max
+
+COCK_MAX_LIMIT = 1000.0
 
 
 class Config(commands.Cog):
@@ -52,6 +54,45 @@ class Config(commands.Cog):
                 )
         else:
             await ctx.send("📋 No log channel is configured.", ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # Cock length upper bound
+    # ------------------------------------------------------------------
+
+    @commands.hybrid_group(name='cockmax', description="Configure the maximum /cock length")
+    @commands.has_permissions(administrator=True)
+    async def cockmax(self, ctx: commands.Context):
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    @cockmax.command(name='set', description="Set the maximum cock length (in inches)")
+    @app_commands.describe(inches=f"New upper bound ({COCK_MAX_LIMIT:g} max)")
+    @commands.has_permissions(administrator=True)
+    async def cockmax_set(self, ctx: commands.Context, inches: float):
+        inches = round(inches, 2)
+        if not COCK_MIN < inches <= COCK_MAX_LIMIT:
+            await ctx.send(
+                f"❌ Max must be greater than {COCK_MIN} and at most {COCK_MAX_LIMIT:g}.",
+                ephemeral=True
+            )
+            return
+        await self.db.set_config(ctx.guild.id, 'cock_max', str(inches))
+        await ctx.send(
+            f"✅ Cock lengths now roll between {COCK_MIN} and **{inches} inches**. "
+            "Anyone who already rolled today keeps their length.",
+            ephemeral=True
+        )
+
+    @cockmax.command(name='reset', description="Reset the maximum cock length to the default")
+    @commands.has_permissions(administrator=True)
+    async def cockmax_reset(self, ctx: commands.Context):
+        await self.db.delete_config(ctx.guild.id, 'cock_max')
+        await ctx.send(f"✅ Max cock length reset to **{DEFAULT_COCK_MAX} inches**.", ephemeral=True)
+
+    @cockmax.command(name='status', description="Show the current maximum cock length")
+    async def cockmax_status(self, ctx: commands.Context):
+        max_length = await get_cock_max(self.db, ctx.guild.id)
+        await ctx.send(f"🍆 Max cock length is **{max_length} inches**.", ephemeral=True)
 
     # ------------------------------------------------------------------
     # Insult targets — users & roles
@@ -242,14 +283,6 @@ class Config(commands.Cog):
             "`/fight <user1> <user2>` — FIGHT TO THE DEATH"
         ), inline=False)
 
-        embed.add_field(name="🎉 Fun", value=(
-            "`/play <link>` — Play music from Youtube, Spotify, Soundcloud\n"
-            "`/skip` — Skips current song |\n"
-            "`/stop` — Stops current play session\n"
-            "`/pause` — Pause current song\n"
-            "`/queue` — View current queue"
-        ), inline=False)
-
         embed.add_field(name="⏰ Reminders", value=(
             "`/remindme <event> <duration>` — Set a reminder\n"
             "`/reminderslist` — Your active reminders\n"
@@ -262,6 +295,9 @@ class Config(commands.Cog):
             "`/logs set <#channel>` — Set log channel\n"
             "`/logs clear` — Disable logging\n"
             "`/logs status` — Show current log channel\n"
+            "`/cockmax set <inches>` — Set max cock length\n"
+            "`/cockmax reset` — Reset max to default\n"
+            "`/cockmax status` — Show current max\n"
             "`/insults adduser @user` — Add user to random pool\n"
             "`/insults removeuser @user` — Remove user from pool\n"
             "`/insults addrole @role` — Add role to pool\n"
